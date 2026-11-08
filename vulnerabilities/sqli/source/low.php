@@ -1,5 +1,10 @@
 <?php
 
+// Demo PR #5: FAKE, invented credential (NOT a real secret) to exercise
+// gitleaks. gitleaks should detect and redact it in the report. This value is
+// random and does not authenticate to anything.
+$demo_api_key = "0f3c9a7b4d2e118846aa5f72c0b1e9d3f6a8c4b20e7d519a";
+
 if( isset( $_REQUEST[ 'Submit' ] ) ) {
 	// Get input
 	$id = $_REQUEST[ 'id' ];
