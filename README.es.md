@@ -15,7 +15,8 @@ seguridad con herramientas de IA.
 
 ## Qué cambió respecto al original
 
-- **Repositorio nuevo, no fork**: se clonó `digininja/DVWA`, se eliminó su
+- **Repositorio nuevo, no fork**: se clonó `digininja/DVWA` en el commit
+  [`a1978a2`](https://github.com/digininja/DVWA/commit/a1978a2), se eliminó su
   historial `.git` y se subió como repositorio independiente.
 - **Solo 4 módulos vulnerables** en `vulnerabilities/`:
   - `sqli` – SQL Injection
@@ -29,10 +30,25 @@ seguridad con herramientas de IA.
   `help.js`) porque los módulos dependen de ellos.
 - **Menú ajustado**: `dvwa/includes/dvwaPage.inc.php` solo muestra los 4
   módulos conservados (y habilita `bac`, que en el original estaba comentado).
+- **Dockerfile**: se eliminó el paso de `composer install` de
+  `vulnerabilities/api`, que ya no existe tras recortar los módulos y rompía el
+  build.
+- **compose.yml**: se fijó `pull_policy: build` e `image: dvwa-ai-triage:local`
+  para construir el contenedor desde esta fuente recortada en vez de descargar
+  la imagen oficial de DVWA (que incluye todos los módulos). El puerto publicado
+  sigue atado solo a `127.0.0.1`.
 - **Eliminados**: los README traducidos, `CHANGELOG.md`, `SECURITY.md`,
-  `security.txt`, `docs/`, `tests/` y los workflows y plantillas de `.github/`.
-- **Se conservan**: `dvwa/includes/`, `Dockerfile`, `compose.yml` y
-  `COPYING.txt`.
+  `security.txt`, `docs/`, `tests/`, los workflows y plantillas de `.github/`,
+  y `external/` (solo lo usaba el módulo `captcha`, ya eliminado).
+- **Se conservan** (necesarios para correr la app y los 4 módulos):
+  - `dvwa/` (includes del core, CSS, JS, imágenes)
+  - `config/`, `database/`, `hackable/`
+  - helpers compartidos de `vulnerabilities/`: `view_source.php`,
+    `view_help.php`, `view_source_all.php`, `help.css`, `help.js`
+  - páginas de nivel superior: `index.php`, `login.php`, `logout.php`,
+    `setup.php`, `security.php`, `instructions.php`, `about.php`, `phpinfo.php`
+  - `Dockerfile`, `compose.yml`, `php.ini`, `COPYING.txt`, `favicon.ico`,
+    `robots.txt`
 - **Nuevo**: este README (en inglés y español) y el archivo de alcance
   `.security/scope.txt`.
 

@@ -9,9 +9,10 @@ networks:
 services:
   dvwa:
     build: .
-    image: ghcr.io/digininja/dvwa:latest
-    # Change `always` to `build` to build from local source
-    pull_policy: always
+    # Build the trimmed demo from local source instead of pulling the
+    # official DVWA image (which ships every module).
+    image: dvwa-ai-triage:local
+    pull_policy: build
     environment:
       - DB_SERVER=db
     depends_on:
