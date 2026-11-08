@@ -100,15 +100,16 @@ jobs:
           set -euo pipefail
           cd "$RUNNER_TEMP"
           base="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
-          curl -fsSL -o gitleaks.tar.gz \
-            "${base}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          tarball="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          # Save the tarball under its real asset name so the checksum line
+          # (which lists that exact name) matches during verification.
+          curl -fsSL -o "$tarball" "${base}/${tarball}"
           curl -fsSL -o checksums.txt \
             "${base}/gitleaks_${GITLEAKS_VERSION}_checksums.txt" \
             || curl -fsSL -o checksums.txt "${base}/checksums.txt"
           # Verify the tarball against the release checksums (fails on mismatch).
-          grep "gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" checksums.txt \
-            | sha256sum -c -
-          tar -xzf gitleaks.tar.gz gitleaks
+          grep "$tarball" checksums.txt | sha256sum -c -
+          tar -xzf "$tarball" gitleaks
           sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
           gitleaks version
 
