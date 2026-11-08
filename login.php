@@ -1,5 +1,7 @@
 <?php
 
+// Demo PR #1 (out of scope): trivial change in login.php. Expected result:
+// semgrep and trivy skip, only gitleaks runs over the commit range.
 define( 'DVWA_WEB_PAGE_TO_ROOT', '' );
 require_once DVWA_WEB_PAGE_TO_ROOT . 'dvwa/includes/dvwaPage.inc.php';
 
