@@ -1,5 +1,8 @@
 <?php
 
+// Demo PR #3: minor change in the hardened (impossible) level. Semgrep is
+// expected to still flag the shell_exec calls below even though each octet is
+// validated as numeric first -> a false positive to document.
 if( isset( $_POST[ 'Submit' ]  ) ) {
 	// Check Anti-CSRF token
 	checkToken( $_REQUEST[ 'user_token' ], $_SESSION[ 'session_token' ], 'index.php' );
