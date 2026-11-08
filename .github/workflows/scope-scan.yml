@@ -1,10 +1,22 @@
-# Scope Scan — Phase 2 skeleton (step 1 of 6).
-# On every PR to main: check out full history and print the commit range.
-# No scanning yet; later steps add scope filtering, gitleaks, Semgrep, Trivy,
-# normalization and the evidence artifact.
+# Scope Scan — Phase 2. On every PR to main, scan only what changed inside the
+# approved scope and produce a normalized JSON of candidate findings with
+# evidence. Static analysis only; it never blocks, fixes, merges or runs the app.
+#
+# Each analysis is its OWN job, so the PR's Checks list shows gitleaks, semgrep
+# and trivy separately and a contributor can see exactly what ran and what each
+# tool found. Layout:
+#   setup    -> commit range + scope filter (shared via outputs + an artifact)
+#   gitleaks -> secret scan over the PR commit range
+#   semgrep  -> SAST over the in-scope changed files
+#   trivy    -> config scan, only when Dockerfile/compose.yml changed
+#   normalize-> merge the SARIF reports into findings.json, upload evidence
 #
 # Uses `pull_request` (NOT `pull_request_target`): PRs from forks run with no
 # secrets and a read-only token, which avoids the "pwn request" class of attack.
+#
+# Pinned tool versions are chosen deliberately (reviewed), not auto-latest:
+#   gitleaks 8.30.1, semgrep 1.183.0, trivy 0.72.0 (post the Mar-2026 incident).
+# Third-party actions are pinned by commit SHA, not tag; re-verify periodically.
 name: Scope Scan
 
 on:
@@ -13,14 +25,19 @@ on:
 
 permissions:
   contents: read
+  actions: read   # download-artifact reads this run's artifacts across jobs
 
 jobs:
-  scope-scan:
-    # Pinned runner image (not ubuntu-latest) for reproducibility.
+  # ---------------------------------------------------------------------------
+  setup:
     runs-on: ubuntu-24.04
+    outputs:
+      base_sha: ${{ steps.range.outputs.base_sha }}
+      head_sha: ${{ steps.range.outputs.head_sha }}
+      merge_base: ${{ steps.range.outputs.merge_base }}
+      in_scope_count: ${{ steps.scope.outputs.in_scope_count }}
+      cfg_changed: ${{ steps.cfg.outputs.changed }}
     steps:
-      # Pinned by commit SHA (not tag): a tag can be moved to a malicious
-      # commit. Re-verify this SHA still maps to a trusted release.
       - name: Checkout (full history)
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
@@ -44,9 +61,6 @@ jobs:
             echo "merge_base=$MERGE_BASE"
           } >> "$GITHUB_OUTPUT"
 
-      # Step 2: restrict the PR's changed files to the approved scope.
-      # Writes scan/in_scope.txt (consumed by Semgrep/Trivy in later steps)
-      # and prints both the changed list and the in-scope list.
       - name: Filter changed files to approved scope
         id: scope
         env:
@@ -55,119 +69,30 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p scan
-
-          # Changed files in the PR, excluding deletions (nothing to scan in
-          # a file that no longer exists). --diff-filter=d drops Deleted.
+          # Changed files in the PR, excluding deletions (nothing to scan in a
+          # file that no longer exists). --diff-filter=d drops Deleted.
           git diff --name-only --diff-filter=d "$MERGE_BASE" "$HEAD_SHA" \
             > scan/changed.txt
           echo "== Changed files in PR (non-deleted) =="
           cat scan/changed.txt || true
 
-          # Load scope entries, skipping comments and blank lines.
           mapfile -t SCOPE < <(grep -vE '^[[:space:]]*(#|$)' .security/scope.txt)
-
           : > scan/in_scope.txt
           while IFS= read -r f; do
             [ -z "$f" ] && continue
             for entry in "${SCOPE[@]}"; do
               case "$entry" in
-                */)  # directory prefix, e.g. vulnerabilities/sqli/
-                  case "$f" in
-                    "$entry"*) echo "$f" >> scan/in_scope.txt; break ;;
-                  esac ;;
-                *)   # exact file, e.g. Dockerfile
-                  if [ "$f" = "$entry" ]; then
-                    echo "$f" >> scan/in_scope.txt; break
-                  fi ;;
+                */)  case "$f" in "$entry"*) echo "$f" >> scan/in_scope.txt; break ;; esac ;;
+                *)   if [ "$f" = "$entry" ]; then echo "$f" >> scan/in_scope.txt; break; fi ;;
               esac
             done
           done < scan/changed.txt
 
           echo "== In-scope files =="
           cat scan/in_scope.txt || true
-
           IN_SCOPE_COUNT="$(grep -c . scan/in_scope.txt || true)"
           echo "in_scope_count=$IN_SCOPE_COUNT" >> "$GITHUB_OUTPUT"
-          echo "In-scope file count: $IN_SCOPE_COUNT"
 
-      # Step 3: secret scan with gitleaks over the PR's commit range.
-      # Pinned version; binary downloaded from the official release and verified
-      # against the release checksums file. Re-verify the version periodically.
-      - name: Install gitleaks (pinned)
-        env:
-          GITLEAKS_VERSION: 8.30.1
-        run: |
-          set -euo pipefail
-          cd "$RUNNER_TEMP"
-          base="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
-          tarball="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
-          # Save the tarball under its real asset name so the checksum line
-          # (which lists that exact name) matches during verification.
-          curl -fsSL -o "$tarball" "${base}/${tarball}"
-          curl -fsSL -o checksums.txt \
-            "${base}/gitleaks_${GITLEAKS_VERSION}_checksums.txt" \
-            || curl -fsSL -o checksums.txt "${base}/checksums.txt"
-          # Verify the tarball against the release checksums (fails on mismatch).
-          grep "$tarball" checksums.txt | sha256sum -c -
-          tar -xzf "$tarball" gitleaks
-          sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
-          gitleaks version
-
-      # Scans the whole PR commit range, NOT just in-scope files: a leaked
-      # secret matters wherever it lands. --redact keeps secret values out of
-      # logs and the report. --exit-code 0 so findings never fail the step;
-      # a non-zero exit then means gitleaks itself broke, which fails the run.
-      - name: gitleaks (secret scan)
-        env:
-          MERGE_BASE: ${{ steps.range.outputs.merge_base }}
-          HEAD_SHA: ${{ steps.range.outputs.head_sha }}
-        run: |
-          set -euo pipefail
-          mkdir -p scan
-          gitleaks git . \
-            --log-opts="${MERGE_BASE}..${HEAD_SHA}" \
-            --redact \
-            --report-format sarif \
-            --report-path scan/gitleaks.sarif \
-            --exit-code 0
-          COUNT="$(jq '[.runs[].results[]?] | length' scan/gitleaks.sarif)"
-          echo "gitleaks findings: $COUNT"
-
-      # Step 4: SAST with Semgrep over the in-scope changed files only.
-      # Rulesets p/php + p/security-audit are pulled from the registry (needs
-      # network, available on Actions). `semgrep scan` exits 0 on findings by
-      # default, so findings never fail the step; a tool error does fail it.
-      - name: Install semgrep (pinned)
-        run: pipx install semgrep==1.183.0
-
-      - name: semgrep (SAST on in-scope changes)
-        run: |
-          set -euo pipefail
-          mkdir -p scan
-          semgrep --version
-          # Nothing in scope changed -> write an empty SARIF so later steps
-          # always have a report to read, and skip the scan.
-          if [ ! -s scan/in_scope.txt ]; then
-            echo "No in-scope files changed; writing empty SARIF."
-            echo '{"version":"2.1.0","runs":[]}' > scan/semgrep.sarif
-            exit 0
-          fi
-          mapfile -t TARGETS < scan/in_scope.txt
-          semgrep scan \
-            --config p/php \
-            --config p/security-audit \
-            --sarif --output scan/semgrep.sarif \
-            --metrics off \
-            "${TARGETS[@]}"
-          COUNT="$(jq '[.runs[].results[]?] | length' scan/semgrep.sarif)"
-          echo "semgrep findings: $COUNT"
-
-      # Step 5: Trivy config scan — ONLY when Dockerfile or compose.yml changed.
-      # Finds container misconfigurations (e.g. running as root). Pinned binary
-      # verified against the release checksums; the official trivy-action is
-      # avoided deliberately (it was part of a March 2026 supply-chain incident).
-      # Findings don't fail the step (trivy exits 0 on misconfigs by default);
-      # a tool error fails the run.
       - name: Check if config files changed
         id: cfg
         run: |
@@ -180,8 +105,134 @@ jobs:
             echo "No Dockerfile/compose.yml change; Trivy will be skipped."
           fi
 
+      - name: Upload scope metadata
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: scope-meta
+          path: |
+            scan/changed.txt
+            scan/in_scope.txt
+          retention-days: 30
+
+  # ---------------------------------------------------------------------------
+  gitleaks:
+    needs: setup
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Install gitleaks (pinned)
+        env:
+          GITLEAKS_VERSION: 8.30.1
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          base="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
+          tarball="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -fsSL -o "$tarball" "${base}/${tarball}"
+          curl -fsSL -o checksums.txt \
+            "${base}/gitleaks_${GITLEAKS_VERSION}_checksums.txt" \
+            || curl -fsSL -o checksums.txt "${base}/checksums.txt"
+          grep "$tarball" checksums.txt | sha256sum -c -
+          tar -xzf "$tarball" gitleaks
+          sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      # Scans the whole PR commit range, NOT just in-scope files: a leaked
+      # secret matters wherever it lands. --redact keeps secret values out of
+      # logs and the report. --exit-code 0 so findings never fail the job;
+      # a non-zero exit then means gitleaks itself broke, which fails it.
+      - name: gitleaks (secret scan)
+        env:
+          MERGE_BASE: ${{ needs.setup.outputs.merge_base }}
+          HEAD_SHA: ${{ needs.setup.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p scan
+          gitleaks git . \
+            --log-opts="${MERGE_BASE}..${HEAD_SHA}" \
+            --redact \
+            --report-format sarif \
+            --report-path scan/gitleaks.sarif \
+            --exit-code 0
+          echo "gitleaks findings: $(jq '[.runs[].results[]?] | length' scan/gitleaks.sarif)"
+
+      - name: Upload gitleaks SARIF
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sarif-gitleaks
+          path: scan/gitleaks.sarif
+          retention-days: 30
+
+  # ---------------------------------------------------------------------------
+  semgrep:
+    needs: setup
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Download scope metadata
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          name: scope-meta
+          path: scan
+
+      - name: Install semgrep (pinned)
+        run: pipx install semgrep==1.183.0
+
+      # SAST over the in-scope changed files only, with p/php + p/security-audit
+      # (pulled from the registry — needs network, available on Actions).
+      # `semgrep scan` exits 0 on findings by default, so findings never fail
+      # the job; a tool error does.
+      - name: semgrep (SAST on in-scope changes)
+        run: |
+          set -euo pipefail
+          mkdir -p scan
+          semgrep --version
+          if [ ! -s scan/in_scope.txt ]; then
+            echo "No in-scope files changed; writing empty SARIF."
+            echo '{"version":"2.1.0","runs":[]}' > scan/semgrep.sarif
+          else
+            mapfile -t TARGETS < scan/in_scope.txt
+            semgrep scan \
+              --config p/php \
+              --config p/security-audit \
+              --sarif --output scan/semgrep.sarif \
+              --metrics off \
+              "${TARGETS[@]}"
+            echo "semgrep findings: $(jq '[.runs[].results[]?] | length' scan/semgrep.sarif)"
+          fi
+
+      - name: Upload semgrep SARIF
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sarif-semgrep
+          path: scan/semgrep.sarif
+          retention-days: 30
+
+  # ---------------------------------------------------------------------------
+  trivy:
+    needs: setup
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Download scope metadata
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          name: scope-meta
+          path: scan
+
+      # Pinned binary verified against the release checksums; the official
+      # trivy-action is avoided deliberately (it was part of a Mar-2026
+      # supply-chain incident). Only runs when a config file changed.
       - name: Install trivy (pinned)
-        if: steps.cfg.outputs.changed == 'true'
+        if: needs.setup.outputs.cfg_changed == 'true'
         env:
           TRIVY_VERSION: 0.72.0
         run: |
@@ -196,33 +247,67 @@ jobs:
           sudo install -m 0755 trivy /usr/local/bin/trivy
           trivy --version
 
+      # Scans ONLY the changed config files (Dockerfile / compose.yml), not the
+      # whole repo, to stay consistent with scope. Findings don't fail the job
+      # (trivy exits 0 on misconfigs by default); a tool error does.
       - name: trivy (config/misconfig scan)
-        if: steps.cfg.outputs.changed == 'true'
         run: |
           set -euo pipefail
           mkdir -p scan
-          trivy config --format sarif --output scan/trivy.sarif .
-          COUNT="$(jq '[.runs[].results[]?] | length' scan/trivy.sarif)"
-          echo "trivy misconfig findings: $COUNT"
+          if [ "${{ needs.setup.outputs.cfg_changed }}" != "true" ]; then
+            echo "Trivy skipped; writing empty SARIF."
+            echo '{"version":"2.1.0","runs":[]}' > scan/trivy.sarif
+            exit 0
+          fi
+          i=0
+          while IFS= read -r f; do
+            case "$f" in
+              Dockerfile|compose.yml)
+                i=$((i+1))
+                trivy config "$f" --format sarif --output "scan/trivy_${i}.sarif"
+                ;;
+            esac
+          done < scan/changed.txt
+          if [ "$i" -eq 0 ]; then
+            echo '{"version":"2.1.0","runs":[]}' > scan/trivy.sarif
+          else
+            # Merge the per-file SARIFs into one, keeping every run.
+            jq -s '{version:"2.1.0", runs: (map(.runs) | add)}' \
+              scan/trivy_*.sarif > scan/trivy.sarif
+          fi
+          echo "trivy misconfig findings: $(jq '[.runs[].results[]?] | length' scan/trivy.sarif)"
 
-      - name: trivy skipped (empty SARIF)
-        if: steps.cfg.outputs.changed != 'true'
-        run: |
-          set -euo pipefail
-          mkdir -p scan
-          echo '{"version":"2.1.0","runs":[]}' > scan/trivy.sarif
-          echo "Trivy skipped; wrote empty SARIF."
+      - name: Upload trivy SARIF
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sarif-trivy
+          path: scan/trivy.sarif
+          retention-days: 30
 
-      # Step 6: normalize the SARIF reports into one findings.json (the Phase 3
-      # contract), upload the raw reports + JSON as an artifact, and write a
-      # counts summary to the job summary.
+  # ---------------------------------------------------------------------------
+  normalize:
+    needs: [setup, gitleaks, semgrep, trivy]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Download all SARIF reports
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          pattern: sarif-*
+          merge-multiple: true
+          path: scan
+
       - name: Normalize findings to JSON
         env:
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          BASE_SHA: ${{ steps.range.outputs.base_sha }}
-          HEAD_SHA: ${{ steps.range.outputs.head_sha }}
-          MERGE_BASE: ${{ steps.range.outputs.merge_base }}
+          BASE_SHA: ${{ needs.setup.outputs.base_sha }}
+          HEAD_SHA: ${{ needs.setup.outputs.head_sha }}
+          MERGE_BASE: ${{ needs.setup.outputs.merge_base }}
+          SERVER_URL: ${{ github.server_url }}
+          RUN_ID: ${{ github.run_id }}
         run: |
           set -euo pipefail
           python3 .github/scripts/normalize.py
@@ -246,10 +331,17 @@ jobs:
             echo "| --- | --- |"
             echo "| Raw records | $(jq '.stats.raw_records' scan/findings.json) |"
             echo "| Unique findings | $(jq '.stats.unique_findings' scan/findings.json) |"
+            echo "| Duplicates | $(jq '.stats.duplicates' scan/findings.json) |"
             echo ""
-            echo "### By tool"
-            echo "| Tool | Raw records |"
+            echo "### By category"
+            echo "| Category | Unique findings |"
             echo "| --- | --- |"
-            jq -r '.stats.by_tool | to_entries[] | "| \(.key) | \(.value) |"' \
+            jq -r '.stats.by_category | to_entries[] | "| \(.key) | \(.value) |"' \
+              scan/findings.json
+            echo ""
+            echo "### By severity"
+            echo "| Severity | Unique findings |"
+            echo "| --- | --- |"
+            jq -r '.stats.by_severity | to_entries[] | "| \(.key) | \(.value) |"' \
               scan/findings.json
           } >> "$GITHUB_STEP_SUMMARY"
