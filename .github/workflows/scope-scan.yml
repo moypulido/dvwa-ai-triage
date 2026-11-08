@@ -212,3 +212,44 @@ jobs:
           mkdir -p scan
           echo '{"version":"2.1.0","runs":[]}' > scan/trivy.sarif
           echo "Trivy skipped; wrote empty SARIF."
+
+      # Step 6: normalize the SARIF reports into one findings.json (the Phase 3
+      # contract), upload the raw reports + JSON as an artifact, and write a
+      # counts summary to the job summary.
+      - name: Normalize findings to JSON
+        env:
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_SHA: ${{ steps.range.outputs.base_sha }}
+          HEAD_SHA: ${{ steps.range.outputs.head_sha }}
+          MERGE_BASE: ${{ steps.range.outputs.merge_base }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/normalize.py
+          echo "== stats =="
+          jq '.stats' scan/findings.json
+
+      - name: Upload evidence artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: scope-scan-evidence
+          path: scan/
+          retention-days: 30
+
+      - name: Write job summary
+        run: |
+          set -euo pipefail
+          {
+            echo "## Scope Scan — findings summary"
+            echo ""
+            echo "| Metric | Value |"
+            echo "| --- | --- |"
+            echo "| Raw records | $(jq '.stats.raw_records' scan/findings.json) |"
+            echo "| Unique findings | $(jq '.stats.unique_findings' scan/findings.json) |"
+            echo ""
+            echo "### By tool"
+            echo "| Tool | Raw records |"
+            echo "| --- | --- |"
+            jq -r '.stats.by_tool | to_entries[] | "| \(.key) | \(.value) |"' \
+              scan/findings.json
+          } >> "$GITHUB_STEP_SUMMARY"
