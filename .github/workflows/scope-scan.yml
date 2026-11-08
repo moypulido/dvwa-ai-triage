@@ -1,0 +1,44 @@
+# Scope Scan — Phase 2 skeleton (step 1 of 6).
+# On every PR to main: check out full history and print the commit range.
+# No scanning yet; later steps add scope filtering, gitleaks, Semgrep, Trivy,
+# normalization and the evidence artifact.
+#
+# Uses `pull_request` (NOT `pull_request_target`): PRs from forks run with no
+# secrets and a read-only token, which avoids the "pwn request" class of attack.
+name: Scope Scan
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  scope-scan:
+    runs-on: ubuntu-latest
+    steps:
+      # Pinned by commit SHA (not tag): a tag can be moved to a malicious
+      # commit. Re-verify this SHA still maps to a trusted release.
+      - name: Checkout (full history)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Resolve PR commit range
+        id: range
+        run: |
+          set -euo pipefail
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          # Diff against the branch point (merge-base), not the current main,
+          # so unrelated changes merged into main meanwhile are not pulled in.
+          MERGE_BASE="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
+          echo "Base branch tip : $BASE_SHA"
+          echo "PR head         : $HEAD_SHA"
+          echo "Branch point    : $MERGE_BASE"
+          {
+            echo "base_sha=$BASE_SHA"
+            echo "head_sha=$HEAD_SHA"
+            echo "merge_base=$MERGE_BASE"
+          } >> "$GITHUB_OUTPUT"
