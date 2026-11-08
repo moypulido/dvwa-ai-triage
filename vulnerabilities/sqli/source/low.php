@@ -1,5 +1,11 @@
 <?php
 
+// Demo PR (introduced_by_pr check): harmless comment, no behavior change.
+// Purpose: produce a v0.2 findings.json on real code and confirm the
+// pre-existing SQLi below comes out "introduced_by_pr": false (semgrep scans
+// the whole file; only lines this PR added should be true). Do NOT merge —
+// close the PR after downloading the scope-scan-evidence artifact.
+
 if( isset( $_REQUEST[ 'Submit' ] ) ) {
 	// Get input
 	$id = $_REQUEST[ 'id' ];
