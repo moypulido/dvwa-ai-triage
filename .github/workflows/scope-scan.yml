@@ -43,3 +43,49 @@ jobs:
             echo "head_sha=$HEAD_SHA"
             echo "merge_base=$MERGE_BASE"
           } >> "$GITHUB_OUTPUT"
+
+      # Step 2: restrict the PR's changed files to the approved scope.
+      # Writes scan/in_scope.txt (consumed by Semgrep/Trivy in later steps)
+      # and prints both the changed list and the in-scope list.
+      - name: Filter changed files to approved scope
+        id: scope
+        env:
+          MERGE_BASE: ${{ steps.range.outputs.merge_base }}
+          HEAD_SHA: ${{ steps.range.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p scan
+
+          # Changed files in the PR, excluding deletions (nothing to scan in
+          # a file that no longer exists). --diff-filter=d drops Deleted.
+          git diff --name-only --diff-filter=d "$MERGE_BASE" "$HEAD_SHA" \
+            > scan/changed.txt
+          echo "== Changed files in PR (non-deleted) =="
+          cat scan/changed.txt || true
+
+          # Load scope entries, skipping comments and blank lines.
+          mapfile -t SCOPE < <(grep -vE '^[[:space:]]*(#|$)' .security/scope.txt)
+
+          : > scan/in_scope.txt
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            for entry in "${SCOPE[@]}"; do
+              case "$entry" in
+                */)  # directory prefix, e.g. vulnerabilities/sqli/
+                  case "$f" in
+                    "$entry"*) echo "$f" >> scan/in_scope.txt; break ;;
+                  esac ;;
+                *)   # exact file, e.g. Dockerfile
+                  if [ "$f" = "$entry" ]; then
+                    echo "$f" >> scan/in_scope.txt; break
+                  fi ;;
+              esac
+            done
+          done < scan/changed.txt
+
+          echo "== In-scope files =="
+          cat scan/in_scope.txt || true
+
+          IN_SCOPE_COUNT="$(grep -c . scan/in_scope.txt || true)"
+          echo "in_scope_count=$IN_SCOPE_COUNT" >> "$GITHUB_OUTPUT"
+          echo "In-scope file count: $IN_SCOPE_COUNT"
