@@ -1,0 +1,8 @@
+# Approved paths (scope) for dvwa-ai-triage
+# Anything not listed here is OUT of scope.
+vulnerabilities/sqli/
+vulnerabilities/exec/
+vulnerabilities/upload/
+vulnerabilities/bac/
+Dockerfile
+compose.yml
