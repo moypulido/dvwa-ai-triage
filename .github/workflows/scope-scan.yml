@@ -104,6 +104,21 @@ jobs:
             echo "No Dockerfile/compose.yml change; Trivy will be skipped."
           fi
 
+      - name: Compute PR-added lines (diff)
+        env:
+          MERGE_BASE: ${{ steps.range.outputs.merge_base }}
+          HEAD_SHA: ${{ steps.range.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          # Zero-context diff of the PR against its branch point. normalize.py
+          # parses this to set introduced_by_pr (which findings sit on lines the
+          # PR added or changed). --diff-filter=d drops deletions. The diff is
+          # taken against HEAD_SHA (not the GitHub merge commit), and the
+          # semgrep/trivy jobs check out HEAD_SHA too, so line numbers match.
+          git diff --unified=0 --diff-filter=d "$MERGE_BASE" "$HEAD_SHA" \
+            > scan/pr.diff
+          echo "== PR diff (unified=0): $(wc -l < scan/pr.diff) lines =="
+
       - name: Upload scope metadata
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -111,6 +126,7 @@ jobs:
           path: |
             scan/changed.txt
             scan/in_scope.txt
+            scan/pr.diff
           retention-days: 30
 
   # ---------------------------------------------------------------------------
@@ -171,8 +187,12 @@ jobs:
     needs: setup
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout
+      # Check out the PR HEAD commit (not GitHub's synthetic merge commit), so
+      # file line numbers match the diff used for introduced_by_pr in setup.
+      - name: Checkout PR head
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          ref: ${{ needs.setup.outputs.head_sha }}
 
       - name: Download scope metadata
         uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
@@ -218,8 +238,12 @@ jobs:
     needs: setup
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout
+      # Check out the PR HEAD commit (not GitHub's synthetic merge commit), so
+      # file line numbers match the diff used for introduced_by_pr in setup.
+      - name: Checkout PR head
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          ref: ${{ needs.setup.outputs.head_sha }}
 
       - name: Download scope metadata
         uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
@@ -288,8 +312,18 @@ jobs:
     needs: [setup, gitleaks, semgrep, trivy]
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout
+      # HEAD commit, so snippet line numbers match the diff (introduced_by_pr).
+      - name: Checkout PR head
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          ref: ${{ needs.setup.outputs.head_sha }}
+
+      # pr.diff lives in scope-meta; normalize.py parses it for introduced_by_pr.
+      - name: Download scope metadata
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          name: scope-meta
+          path: scan
 
       - name: Download all SARIF reports
         uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
