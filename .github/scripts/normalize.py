@@ -8,10 +8,14 @@ the scan steps and emits scan/findings.json with:
   - stats (raw records shown, unique findings, duplicates, and per tool /
     category / severity breakdowns over unique findings),
   - one normalized record per unique finding: id, tool, category, rule,
-    severity, file, line, module, DVWA level, in_scope, message, a +/-2 line
-    snippet (capped) and status "candidate"; plus occurrences = how many raw
-    records collapsed into it.
-Secrets (gitleaks) carry no snippet.
+    severity, severity_source, file, line, module, DVWA level, in_scope,
+    introduced_by_pr, message, a +/-2 line snippet (capped) and status
+    "candidate"; plus occurrences = how many raw records collapsed into it.
+Secrets (gitleaks) carry no snippet. severity_source is "tool" (semgrep/trivy,
+severity as the tool reports it) or "policy" (gitleaks, pinned to "error").
+introduced_by_pr is true when the finding sits on a line the PR added or
+changed (always true for gitleaks, which only scans the PR commit range); the
+touched lines come from scan/pr.diff (git diff --unified=0 merge_base..head).
 
 Stable ID (pendiente #4): hashed from tool+rule+file, the tool-marked lines
 with whitespace normalized, and an ordinal that separates identical content at
@@ -34,7 +38,7 @@ from datetime import datetime, timezone
 SCAN_DIR = "scan"
 OUT_PATH = os.path.join(SCAN_DIR, "findings.json")
 SCOPE_PATH = os.path.join(".security", "scope.txt")
-SCHEMA_VERSION = "0.1"
+SCHEMA_VERSION = "0.2"
 SNIPPET_MAX = 600
 
 # Map each SARIF file to the tool and category that produced it. Driver names
@@ -49,6 +53,8 @@ DVWA_LEVELS = {"low", "medium", "high", "impossible"}
 MODULE_RE = re.compile(r"^vulnerabilities/([^/]+)/")
 LEVEL_RE = re.compile(r"^vulnerabilities/[^/]+/source/([a-z]+)\.php$")
 WS_RE = re.compile(r"\s+")
+PR_DIFF_PATH = os.path.join(SCAN_DIR, "pr.diff")
+HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
 
 
 def load_sarif(path):
@@ -83,6 +89,46 @@ def in_scope(path, scope):
         elif path == entry:
             return True
     return False
+
+
+def load_added_lines(path=PR_DIFF_PATH):
+    """Map new-file path -> set of line numbers the PR added or changed.
+
+    Parsed from the `git diff --unified=0 MERGE_BASE HEAD` the setup job writes
+    to scan/pr.diff. Used for introduced_by_pr: whether a finding sits on a line
+    this PR actually touched, as opposed to pre-existing code that the whole-file
+    scanners (semgrep/trivy) also flag. Missing file (e.g. a local run) -> empty
+    map, so introduced_by_pr falls back to false for those tools."""
+    added = defaultdict(set)
+    if not os.path.isfile(path):
+        return added
+    current = None
+    new_ln = 0
+    with open(path, "r", encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            if line.startswith("+++ "):
+                target = line[4:].strip()
+                current = None if target == "/dev/null" else (
+                    target[2:] if target.startswith("b/") else target)
+                new_ln = 0
+                continue
+            if line.startswith("@@"):
+                m = HUNK_RE.match(line)
+                new_ln = int(m.group(1)) if m else 0
+                continue
+            if current is None or new_ln == 0:
+                continue
+            if line.startswith("+"):
+                added[current].add(new_ln)
+                new_ln += 1
+            elif line.startswith("-") or line.startswith("\\"):
+                # deletion, or the "\ No newline at end of file" marker: the
+                # new-side line counter does not advance.
+                continue
+            else:
+                # context line (only present with >0 context): advance counter.
+                new_ln += 1
+    return added
 
 
 def module_of(path):
@@ -182,8 +228,11 @@ def first_location(result):
     return (uri, region.get("startLine"), region.get("endLine"), inline)
 
 
-def collect_raw(scope):
-    """Read every SARIF result into a flat list of raw records."""
+def collect_raw(scope, added):
+    """Read every SARIF result into a flat list of raw records.
+
+    `added` maps file -> set of PR-touched lines (from load_added_lines), used
+    to set introduced_by_pr."""
     raw = []
     file_cache = {}
     for tool, src in SARIF_SOURCES.items():
@@ -205,23 +254,38 @@ def collect_raw(scope):
                     pf = result.get("partialFingerprints") or {}
                     anchor = json.dumps(pf, sort_keys=True) if pf else "secret"
                     snippet = None
+                    # gitleaks scans only the PR commit range, so any secret it
+                    # reports is PR-introduced. Severity is a fixed policy call
+                    # (a leaked secret is "error"), not read from the tool, which
+                    # leaves no usable level.
+                    severity = "error"
+                    severity_source = "policy"
+                    introduced = True
                 else:
                     anchor = marked_text(lines, start, end) \
                         or (WS_RE.sub(" ", inline).strip() if inline else None) \
                         or ("L%s" % (start if start else "?"))
                     snippet = display_snippet(lines, start) or (
                         inline[:SNIPPET_MAX] if inline else None)
+                    severity = severity_of(result, rules_index)
+                    severity_source = "tool"
+                    # semgrep/trivy scan whole files, so a finding on untouched
+                    # code (e.g. the pre-existing SQLi) is NOT introduced by the
+                    # PR; only a finding on a line the diff added/changed is.
+                    introduced = start is not None and start in added.get(uri, set())
 
                 raw.append({
                     "tool": tool,
                     "category": category,
                     "rule": result.get("ruleId"),
-                    "severity": severity_of(result, rules_index),
+                    "severity": severity,
+                    "severity_source": severity_source,
                     "file": uri,
                     "line": start,
                     "module": module_of(uri),
                     "dvwa_level": dvwa_level_of(uri),
                     "in_scope": in_scope(uri, scope),
+                    "introduced_by_pr": introduced,
                     "message": message_of(result),
                     "snippet": snippet,
                     "status": "candidate",
@@ -247,7 +311,8 @@ def assign_ordinals(raw):
 
 def normalize():
     scope = load_scope()
-    raw = collect_raw(scope)
+    added = load_added_lines()
+    raw = collect_raw(scope, added)
     assign_ordinals(raw)
 
     unique = {}
