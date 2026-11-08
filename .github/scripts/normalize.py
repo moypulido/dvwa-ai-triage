@@ -135,13 +135,36 @@ def stable_id(tool, rule, path, anchor, ordinal):
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12]
 
 
-def severity_of(result):
-    props = result.get("properties") or {}
-    for key in ("security-severity", "Severity", "severity"):
-        val = props.get(key)
-        if val not in (None, ""):
-            return str(val)
-    return result.get("level") or "unknown"
+def severity_of(result, rules_index):
+    """Severity as the tool reports it. Semgrep does not put severity on each
+    result; it lives on the rule (defaultConfiguration.level), looked up by
+    ruleId. Prefer the textual SARIF level so the scale is consistent across
+    tools (error/warning/note), falling back to a numeric security-severity."""
+    rule = rules_index.get(result.get("ruleId")) or {}
+    level = (rule.get("defaultConfiguration") or {}).get("level") \
+        or result.get("level")
+    if level:
+        return str(level)
+    for src in (result.get("properties") or {}, rule.get("properties") or {}):
+        for key in ("security-severity", "Severity", "severity"):
+            val = src.get(key)
+            if val not in (None, ""):
+                return str(val)
+    return "unknown"
+
+
+def rules_index_of(run):
+    """Map ruleId -> rule object from the run's tool driver (and extensions)."""
+    index = {}
+    tool = run.get("tool") or {}
+    drivers = [tool.get("driver") or {}]
+    drivers.extend(tool.get("extensions") or [])
+    for driver in drivers:
+        for rule in driver.get("rules") or []:
+            rid = rule.get("id")
+            if rid and rid not in index:
+                index[rid] = rule
+    return index
 
 
 def message_of(result):
@@ -167,6 +190,7 @@ def collect_raw(scope):
         sarif = load_sarif(src["path"])
         category = src["category"]
         for run in sarif.get("runs", []):
+            rules_index = rules_index_of(run)
             for result in run.get("results", []):
                 uri, start, end, inline = first_location(result)
                 if uri not in file_cache:
@@ -174,9 +198,12 @@ def collect_raw(scope):
                 lines = file_cache[uri]
 
                 if tool == "gitleaks":
-                    # Never put secret material (even hashed) into the ID or
-                    # the output; a constant anchor + ordinal separates secrets.
-                    anchor = "secret"
+                    # Anchor on gitleaks' own partialFingerprints (commit, path,
+                    # etc. — never the secret itself) so each secret keeps its
+                    # own stable ID and cannot inherit another's suppression.
+                    # Fall back to a constant anchor + ordinal only if absent.
+                    pf = result.get("partialFingerprints") or {}
+                    anchor = json.dumps(pf, sort_keys=True) if pf else "secret"
                     snippet = None
                 else:
                     anchor = marked_text(lines, start, end) \
@@ -189,7 +216,7 @@ def collect_raw(scope):
                     "tool": tool,
                     "category": category,
                     "rule": result.get("ruleId"),
-                    "severity": severity_of(result),
+                    "severity": severity_of(result, rules_index),
                     "file": uri,
                     "line": start,
                     "module": module_of(uri),

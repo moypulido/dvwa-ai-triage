@@ -25,7 +25,6 @@ on:
 
 permissions:
   contents: read
-  actions: read   # download-artifact reads this run's artifacts across jobs
 
 jobs:
   # ---------------------------------------------------------------------------
