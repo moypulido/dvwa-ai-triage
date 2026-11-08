@@ -132,3 +132,32 @@ jobs:
             --exit-code 0
           COUNT="$(jq '[.runs[].results[]?] | length' scan/gitleaks.sarif)"
           echo "gitleaks findings: $COUNT"
+
+      # Step 4: SAST with Semgrep over the in-scope changed files only.
+      # Rulesets p/php + p/security-audit are pulled from the registry (needs
+      # network, available on Actions). `semgrep scan` exits 0 on findings by
+      # default, so findings never fail the step; a tool error does fail it.
+      - name: Install semgrep (pinned)
+        run: pipx install semgrep==1.183.0
+
+      - name: semgrep (SAST on in-scope changes)
+        run: |
+          set -euo pipefail
+          mkdir -p scan
+          semgrep --version
+          # Nothing in scope changed -> write an empty SARIF so later steps
+          # always have a report to read, and skip the scan.
+          if [ ! -s scan/in_scope.txt ]; then
+            echo "No in-scope files changed; writing empty SARIF."
+            echo '{"version":"2.1.0","runs":[]}' > scan/semgrep.sarif
+            exit 0
+          fi
+          mapfile -t TARGETS < scan/in_scope.txt
+          semgrep scan \
+            --config p/php \
+            --config p/security-audit \
+            --sarif --output scan/semgrep.sarif \
+            --metrics off \
+            "${TARGETS[@]}"
+          COUNT="$(jq '[.runs[].results[]?] | length' scan/semgrep.sarif)"
+          echo "semgrep findings: $COUNT"
