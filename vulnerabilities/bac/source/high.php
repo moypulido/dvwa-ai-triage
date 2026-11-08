@@ -40,30 +40,31 @@ if (isset($_GET['action']) && isset($_GET['user_id'])) {
             if (isset($_SESSION['user_id'])) {
                 $session_id = intval($_SESSION['user_id']);
 
-                if ($id == $session_id) {
-                    // Access granted - using prepared statement
-                    $query = "SELECT first_name, last_name, user_id, avatar FROM users WHERE user_id = ?";
-                    $stmt = mysqli_prepare($GLOBALS["___mysqli_ston"], $query);
-                    mysqli_stmt_bind_param($stmt, "i", $id);
-                    mysqli_stmt_execute($stmt);
-                    $result = mysqli_stmt_get_result($stmt);
+                // Demo PR #4 (bac regression): the access-control check
+                // `if ($id == $session_id)` was removed -> IDOR. The profile
+                // query now runs for ANY requested user_id, not just the
+                // session owner. Semgrep won't flag this (prepared statement,
+                // no injectable sink) -> documented proof gap.
+                // Access granted - using prepared statement
+                $query = "SELECT first_name, last_name, user_id, avatar FROM users WHERE user_id = ?";
+                $stmt = mysqli_prepare($GLOBALS["___mysqli_ston"], $query);
+                mysqli_stmt_bind_param($stmt, "i", $id);
+                mysqli_stmt_execute($stmt);
+                $result = mysqli_stmt_get_result($stmt);
 
-                    if ($result && mysqli_num_rows($result) > 0) {
-                        $row = mysqli_fetch_assoc($result);
-                        $html .= "
-                            <div class=\"profile-info\">
-                                <h3>User Profile</h3>
-                                <p>User ID: " . htmlspecialchars($row['user_id'], ENT_QUOTES, 'UTF-8') . "</p>
-                                <p>Name: " . htmlspecialchars($row['first_name'], ENT_QUOTES, 'UTF-8') . " " .
-                            htmlspecialchars($row['last_name'], ENT_QUOTES, 'UTF-8') . "</p>
-                                <p>Avatar: " . htmlspecialchars($row['avatar'], ENT_QUOTES, 'UTF-8') . "</p>
-                                <!-- Hint: Session management is better, but still vulnerable... -->
-                            </div>";
-                    }
-                    mysqli_stmt_close($stmt);
-                } else {
-                    $html .= "<p>Access denied. You can only view your own profile.</p>";
+                if ($result && mysqli_num_rows($result) > 0) {
+                    $row = mysqli_fetch_assoc($result);
+                    $html .= "
+                        <div class=\"profile-info\">
+                            <h3>User Profile</h3>
+                            <p>User ID: " . htmlspecialchars($row['user_id'], ENT_QUOTES, 'UTF-8') . "</p>
+                            <p>Name: " . htmlspecialchars($row['first_name'], ENT_QUOTES, 'UTF-8') . " " .
+                        htmlspecialchars($row['last_name'], ENT_QUOTES, 'UTF-8') . "</p>
+                            <p>Avatar: " . htmlspecialchars($row['avatar'], ENT_QUOTES, 'UTF-8') . "</p>
+                            <!-- Hint: Session management is better, but still vulnerable... -->
+                        </div>";
                 }
+                mysqli_stmt_close($stmt);
             } else {
                 $html .= "<p>Access denied. No user_id in session.</p>";
             }
