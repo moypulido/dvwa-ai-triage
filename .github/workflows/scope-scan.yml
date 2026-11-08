@@ -161,3 +161,54 @@ jobs:
             "${TARGETS[@]}"
           COUNT="$(jq '[.runs[].results[]?] | length' scan/semgrep.sarif)"
           echo "semgrep findings: $COUNT"
+
+      # Step 5: Trivy config scan — ONLY when Dockerfile or compose.yml changed.
+      # Finds container misconfigurations (e.g. running as root). Pinned binary
+      # verified against the release checksums; the official trivy-action is
+      # avoided deliberately (it was part of a March 2026 supply-chain incident).
+      # Findings don't fail the step (trivy exits 0 on misconfigs by default);
+      # a tool error fails the run.
+      - name: Check if config files changed
+        id: cfg
+        run: |
+          set -euo pipefail
+          if grep -qxE 'Dockerfile|compose\.yml' scan/changed.txt; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Dockerfile/compose.yml changed; Trivy will run."
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No Dockerfile/compose.yml change; Trivy will be skipped."
+          fi
+
+      - name: Install trivy (pinned)
+        if: steps.cfg.outputs.changed == 'true'
+        env:
+          TRIVY_VERSION: 0.72.0
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          base="https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}"
+          tarball="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          curl -fsSL -o "$tarball" "${base}/${tarball}"
+          curl -fsSL -o checksums.txt "${base}/trivy_${TRIVY_VERSION}_checksums.txt"
+          grep "$tarball" checksums.txt | sha256sum -c -
+          tar -xzf "$tarball" trivy
+          sudo install -m 0755 trivy /usr/local/bin/trivy
+          trivy --version
+
+      - name: trivy (config/misconfig scan)
+        if: steps.cfg.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p scan
+          trivy config --format sarif --output scan/trivy.sarif .
+          COUNT="$(jq '[.runs[].results[]?] | length' scan/trivy.sarif)"
+          echo "trivy misconfig findings: $COUNT"
+
+      - name: trivy skipped (empty SARIF)
+        if: steps.cfg.outputs.changed != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p scan
+          echo '{"version":"2.1.0","runs":[]}' > scan/trivy.sarif
+          echo "Trivy skipped; wrote empty SARIF."
