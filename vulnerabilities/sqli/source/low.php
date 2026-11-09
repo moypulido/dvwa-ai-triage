@@ -1,5 +1,7 @@
 <?php
 
+// demo: e2e dedup test, do not merge
+
 if( isset( $_REQUEST[ 'Submit' ] ) ) {
 	// Get input
 	$id = $_REQUEST[ 'id' ];
