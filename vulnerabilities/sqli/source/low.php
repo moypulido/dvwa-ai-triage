@@ -1,6 +1,6 @@
 <?php
 
-// other test
+// other test jeje
 
 if( isset( $_REQUEST[ 'Submit' ] ) ) {
 	// Get input
