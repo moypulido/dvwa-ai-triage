@@ -1,5 +1,7 @@
 <?php
 
+// test
+
 if( isset( $_REQUEST[ 'Submit' ] ) ) {
 	// Get input
 	$id = $_REQUEST[ 'id' ];
