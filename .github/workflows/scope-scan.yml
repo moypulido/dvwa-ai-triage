@@ -378,3 +378,42 @@ jobs:
             jq -r '.stats.by_severity | to_entries[] | "| \(.key) | \(.value) |"' \
               scan/findings.json
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------------
+  # send: POST findings.json to the n8n intake webhook.
+  # It is the only job with secrets, so it never checks out or runs code from
+  # the PR: it downloads the evidence artifact and calls curl.
+  # ---------------------------------------------------------------------------
+  send:
+    needs: normalize
+    # Same-repo PRs only; fork PRs get no secrets.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    permissions: {}
+    steps:
+      - name: Download evidence
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          name: scope-scan-evidence
+          path: evidence
+
+      - name: POST findings to n8n
+        env:
+          N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL }}
+          N8N_WEBHOOK_TOKEN: ${{ secrets.N8N_WEBHOOK_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${N8N_WEBHOOK_URL}" ] || [ -z "${N8N_WEBHOOK_TOKEN}" ]; then
+            echo "n8n secrets not available; skipping."
+            exit 0
+          fi
+          code=$(curl -sS -o response.txt -w '%{http_code}' --max-time 120 \
+            -X POST "$N8N_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -H "X-Scan-Token: $N8N_WEBHOOK_TOKEN" \
+            --data-binary @evidence/findings.json)
+          echo "n8n responded HTTP $code"
+          if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
+            head -c 1000 response.txt; echo
+            exit 1
+          fi
