@@ -3,6 +3,7 @@
 if( isset( $_REQUEST[ 'Submit' ] ) ) {
 	// Get input
 	$id = $_REQUEST[ 'id' ];
+	// demo: user_id is interpolated straight into the SQL query below
 
 	switch ($_DVWA['SQLI_DB']) {
 		case MYSQL:
