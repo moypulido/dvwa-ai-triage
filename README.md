@@ -76,3 +76,5 @@ Based on **DVWA – Damn Vulnerable Web Application** by Robin Wood
 
 Like the original, this project is licensed under the
 **GNU General Public License v3.0 (GPL-3.0)**. See [`COPYING.txt`](COPYING.txt).
+
+<!-- demo: out-of-scope change (docs only; no scanner should run) -->
