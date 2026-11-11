@@ -7,6 +7,7 @@ if( isset( $_POST[ 'Submit' ]  ) ) {
 	// Get input
 	$target = $_REQUEST[ 'ip' ];
 	$target = stripslashes( $target );
+	// demo: input is constrained to 4 numeric octets before it can reach shell_exec
 
 	// Split the IP into 4 octects
 	$octet = explode( ".", $target );

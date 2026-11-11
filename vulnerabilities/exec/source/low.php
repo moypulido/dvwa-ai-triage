@@ -3,6 +3,7 @@
 if( isset( $_POST[ 'Submit' ]  ) ) {
 	// Get input
 	$target = $_REQUEST[ 'ip' ];
+	// demo: $target reaches shell_exec() unsanitized on both OS branches
 
 	// Determine OS and execute the ping command.
 	if( stristr( php_uname( 's' ), 'Windows NT' ) ) {
