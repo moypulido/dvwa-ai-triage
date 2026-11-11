@@ -18,3 +18,5 @@ RUN apt-get update \
 
 COPY --chown=www-data:www-data . .
 COPY --chown=www-data:www-data config/config.inc.php.dist config/config.inc.php
+
+# demo: base image pinned to a tag (not a digest); no USER directive set
