@@ -7,74 +7,60 @@
 > accesible desde internet. Solo se ejecuta en local, dentro de Docker, con fines
 > educativos y para probar el triage de vulnerabilidades asistido por IA.
 
-## Qué es
+## Por qué este proyecto
 
-Una versión recortada de [DVWA (Damn Vulnerable Web Application)](https://github.com/digininja/DVWA)
-que sirve como objetivo controlado para practicar el triage de hallazgos de
-seguridad con herramientas de IA.
+Muchos de los análisis automáticos que corren en los pull requests buscan CVEs
+conocidos en las dependencias. El código que introduce el propio pull request
+recibe mucha menos atención: se confía en el desarrollador. Ataques a la cadena
+de suministro como la puerta trasera de xz (2024) mostraron que el cambio de un
+colaborador de confianza puede ser el ataque.
 
-## Qué cambió respecto al original
+Este proyecto pone la revisión en el cambio mismo. Cada pull request se
+escanea, una IA da una primera opinión y una persona toma la decisión final,
+que queda registrada. No detiene a un atacante decidido. Asegura que alguien
+mire y que la decisión deje rastro.
 
-- **Repositorio nuevo, no fork**: se clonó `digininja/DVWA` en el commit
-  [`a1978a2`](https://github.com/digininja/DVWA/commit/a1978a2), se eliminó su
-  historial `.git` y se subió como repositorio independiente.
-- **Solo 4 módulos vulnerables** en `vulnerabilities/`:
-  - `sqli` – SQL Injection
-  - `exec` – Command Injection
-  - `upload` – File Upload
-  - `bac` – Broken Access Control
+Lo hice para mi portafolio porque la ciberseguridad es el área que más me gusta.
 
-  El resto de módulos (brute, csrf, fi, captcha, xss_*, csp, javascript, api,
-  etc.) se eliminaron. Se conservan los archivos auxiliares compartidos
-  (`view_source.php`, `view_help.php`, `view_source_all.php`, `help.css`,
-  `help.js`) porque los módulos dependen de ellos.
-- **Menú ajustado**: `dvwa/includes/dvwaPage.inc.php` solo muestra los 4
-  módulos conservados (y habilita `bac`, que en el original estaba comentado).
-- **Dockerfile**: se eliminó el paso de `composer install` de
-  `vulnerabilities/api`, que ya no existe tras recortar los módulos y rompía el
-  build.
-- **compose.yml**: se fijó `pull_policy: build` e `image: dvwa-ai-triage:local`
-  para construir el contenedor desde esta fuente recortada en vez de descargar
-  la imagen oficial de DVWA (que incluye todos los módulos). El puerto publicado
-  sigue atado solo a `127.0.0.1`.
-- **Eliminados**: los README traducidos, `CHANGELOG.md`, `SECURITY.md`,
-  `security.txt`, `docs/`, `tests/`, los workflows y plantillas de `.github/`,
-  y `external/` (solo lo usaba el módulo `captcha`, ya eliminado).
-- **Se conservan** (necesarios para correr la app y los 4 módulos):
-  - `dvwa/` (includes del core, CSS, JS, imágenes)
-  - `config/`, `database/`, `hackable/`
-  - helpers compartidos de `vulnerabilities/`: `view_source.php`,
-    `view_help.php`, `view_source_all.php`, `help.css`, `help.js`
-  - páginas de nivel superior: `index.php`, `login.php`, `logout.php`,
-    `setup.php`, `security.php`, `instructions.php`, `about.php`, `phpinfo.php`
-  - `Dockerfile`, `compose.yml`, `php.ini`, `COPYING.txt`, `favicon.ico`,
-    `robots.txt`
-- **Nuevo**: este README (en inglés y español) y el archivo de alcance
-  `.security/scope.txt`.
+## Qué hace
 
-## Alcance
+**Los escáneres encuentran, una IA sugiere, una persona decide y cada decisión
+queda registrada.** Corre en cada pull request sobre una copia recortada de
+[DVWA](https://github.com/digininja/DVWA), una aplicación vulnerable a
+propósito. El análisis es solo estático: cada hallazgo es un candidato, no una
+vulnerabilidad confirmada.
 
-Las rutas aprobadas para análisis están en [`.security/scope.txt`](.security/scope.txt).
-Cualquier ruta que no aparezca ahí queda fuera de alcance.
+El objetivo es medir la **calidad de la decisión, no el volumen de alertas**.
+Los números son públicos, solo como agregados:
+<https://moypulido.github.io/dvwa-ai-triage/>
 
-## Ejecutar en local
+## Cómo funciona
+
+1. **Encontrar.** GitHub Actions escanea solo los archivos en alcance con
+   gitleaks, semgrep y trivy, y une los reportes en uno.
+2. **Clasificar.** n8n descarta lo ya conocido, pide una sugerencia a una IA
+   para lo nuevo (nunca para secretos) y manda un correo por pull request.
+3. **Decidir.** Cada hallazgo trae un link firmado a una página con el código.
+   La persona registra disposición, severidad y razón.
+4. **Demostrar.** n8n calcula las métricas, manda un reporte ejecutivo y
+   publica el dashboard.
+
+El diagrama, las capturas y los flujos de n8n están en el [README en inglés](README.md).
+
+## Ejecutarlo en local
 
 ```bash
 docker compose up -d
 ```
 
-Abre <http://localhost:4280>, entra con `admin` / `password` y pulsa
-**Create / Reset Database**. Para apagarlo:
-
-```bash
-docker compose down
-```
+Abre <http://localhost:4280>, entra con `admin` / `password` y da clic en
+**Create / Reset Database**. Para detenerlo: `docker compose down`.
 
 ## Créditos y licencia
 
-Basado en **DVWA – Damn Vulnerable Web Application**, de Robin Wood
+Basado en **DVWA – Damn Vulnerable Web Application** de Robin Wood
 ([@digininja](https://github.com/digininja)) y colaboradores:
 <https://github.com/digininja/DVWA>.
 
-Como el original, este proyecto se distribuye bajo la licencia
-**GNU General Public License v3.0 (GPL-3.0)**. Consulta [`COPYING.txt`](COPYING.txt).
+Igual que el original, este proyecto usa la licencia
+**GNU General Public License v3.0 (GPL-3.0)**. Ver [`COPYING.txt`](COPYING.txt).
