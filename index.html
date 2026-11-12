@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- No inline code, no third-party hosts: the page only loads its own files. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<title>dvwa-ai-triage · Triage metrics</title>
+<meta name="description" content="Aggregated metrics of an AI-assisted, human-decided security finding triage pipeline.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main class="viz-root">
+  <header>
+    <p class="eyebrow">dvwa-ai-triage</p>
+    <h1>Security finding triage metrics</h1>
+    <p class="lede">Scanners find, an AI suggests, a human decides, and every decision is recorded.
+      This page shows aggregates only: no code, file paths, reasons or reviewer names.</p>
+    <p class="meta" id="meta">Loading metrics…</p>
+  </header>
+  <div id="app" aria-live="polite"></div>
+  <footer>
+    <p><b>Limits.</b> Static analysis only (semgrep, gitleaks, trivy): the app is never deployed or run, so
+      every finding is a candidate, not a confirmed vulnerability. These scanners do not detect logic flaws
+      such as broken access control. AI–human agreement is not accuracy: it also rises when the reviewer
+      follows the suggestion.</p>
+    <p><a href="https://github.com/moypulido/dvwa-ai-triage" rel="noopener noreferrer">Source and README</a></p>
+  </footer>
+</main>
+<div id="tip" role="tooltip" hidden></div>
+<script src="app.js"></script>
+</body>
+</html>

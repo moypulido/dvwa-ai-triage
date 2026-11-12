@@ -1,0 +1,133 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-11-11T22:33:23Z",
+  "window": {
+    "first_run": "2026-11-11T20:59:15.866Z",
+    "last_run": "2026-11-11T22:19:55.976Z"
+  },
+  "volume": {
+    "runs": 7,
+    "prs": 6,
+    "runs_without_findings": 1,
+    "emails_sent": 5,
+    "raw_records": 26,
+    "sightings": 26,
+    "unique_findings": 18,
+    "review_locations": 13
+  },
+  "dedup": {
+    "duplicates_within_runs": 0,
+    "repeat_sightings": 8,
+    "reviews_without_dedup": 26,
+    "reviews_with_dedup": 18,
+    "reviews_saved": 8,
+    "saved_rate": 0.308
+  },
+  "decisions": {
+    "decided": 18,
+    "open": 0,
+    "by_disposition": {
+      "accepted": 16,
+      "suppressed": 2
+    },
+    "open_by_disposition": {},
+    "actionable_rate": 0.889,
+    "false_positive_rate": 0,
+    "false_positives_in_impossible_level": 0,
+    "findings_in_impossible_level": 4,
+    "log_entries": 19,
+    "log_by_source": {
+      "form": 19
+    },
+    "findings_decided_more_than_once": 1,
+    "short_rationales": 17,
+    "short_rationale_rate": 0.944
+  },
+  "time_to_decision": {
+    "measured": 18,
+    "median_h": 0.37,
+    "p90_h": 0.58,
+    "max_h": 0.59
+  },
+  "ai": {
+    "eligible": 16,
+    "not_sent_secrets": 2,
+    "by_provider": {
+      "gemini": 13,
+      "groq": 3
+    },
+    "by_status": {
+      "candidate": 14,
+      "likely_false_positive": 2
+    },
+    "fallback_rate": 0.188,
+    "failure_rate": 0,
+    "failures_logged_in_runs": 0,
+    "injection_suspected": 0,
+    "avg_proof_gaps": 2.5
+  },
+  "agreement": {
+    "compared": 16,
+    "ai_abstained_needs_evidence": 0,
+    "verdict_compared": 16,
+    "verdict_agreement_rate": 0.875,
+    "ai_real_human_real": 14,
+    "ai_real_human_false_positive": 0,
+    "ai_false_positive_human_real": 2,
+    "ai_false_positive_human_false_positive": 0,
+    "severity_compared": 16,
+    "severity_exact_rate": 0.625,
+    "severity_within_one_rate": 1,
+    "human_raised_severity": 6,
+    "human_lowered_severity": 0
+  },
+  "proof_gaps": {
+    "open_findings_with_gaps": 0,
+    "open_gaps": 0
+  },
+  "distributions": {
+    "tool": {
+      "semgrep": 13,
+      "trivy": 3,
+      "gitleaks": 2
+    },
+    "category": {
+      "sast": 13,
+      "iac": 3,
+      "secrets": 2
+    },
+    "scanner_severity": {
+      "error": 13,
+      "warning": 4,
+      "note": 1
+    },
+    "final_severity": {
+      "critical": 8,
+      "high": 5,
+      "medium": 3,
+      "info": 2
+    },
+    "module": {
+      "exec": 8,
+      "(none)": 3,
+      "bac": 3,
+      "sqli": 2,
+      "upload": 2
+    },
+    "dvwa_level": {
+      "low": 6,
+      "(none)": 5,
+      "impossible": 4,
+      "medium": 3
+    },
+    "origin": {
+      "preexisting": 16,
+      "pr": 2
+    }
+  },
+  "data_quality": {
+    "duplicate_run_rows_ignored": 0,
+    "occurrence_rows": 26,
+    "occurrences_match_sightings": true
+  }
+}
