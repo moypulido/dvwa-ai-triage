@@ -1,0 +1,1937 @@
+{
+  "name": "flow-2-decision",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "// Flow 2 · test link url: builds the links from the signed values.\nconst BASE = 'https://YOUR_N8N_HOST';\nconst { fid, exp, sig } = $input.first().json;\nconst qs = `fid=${encodeURIComponent(fid)}&exp=${exp}&sig=${sig}`;\nreturn [{ json: {\n  test_url: `${BASE}/form-test/decide?${qs}`,\n  prod_url: `${BASE}/form/decide?${qs}`,\n  expires_at: new Date(exp * 1000).toISOString(),\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        500
+      ],
+      "id": "0799921b-918a-4eb1-902e-6a4409635627",
+      "name": "test link url"
+    },
+    {
+      "parameters": {
+        "action": "hmac",
+        "value": "={{ 'v1.' + $json.fid + '.' + $json.exp }}",
+        "dataPropertyName": "sig"
+      },
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 2,
+      "position": [
+        440,
+        500
+      ],
+      "id": "afadde96-47c1-470e-a818-91e0d82b86eb",
+      "name": "sign test link",
+      "credentials": {
+        "crypto": {
+          "id": null,
+          "name": "decision-links"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Flow 2 · test link input (manual helper, not part of the form path)\n// Put the id of an open finding below and run this branch with \"Execute workflow\"\n// from the \"Mint test link\" trigger. The signature is made inside n8n with the same\n// credential, so the HMAC key never leaves n8n.\n\nconst FINDING_ID = 'PUT_A_FINDING_ID_HERE';\nconst TTL_DAYS = 3;\n\nconst exp = Math.floor(Date.now() / 1000) + TTL_DAYS * 24 * 3600;\nreturn [{ json: { fid: FINDING_ID, exp } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        500
+      ],
+      "id": "4a7a9064-59b1-44eb-b08d-0e31f94ce496",
+      "name": "test link input"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        500
+      ],
+      "id": "33f3496e-c18b-4ada-9bde-3d57763e1a3d",
+      "name": "Mint test link"
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "completionTitle": "This link is invalid or expired",
+        "completionMessage": "Open the latest triage email for a fresh link.",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.3,
+      "position": [
+        2640,
+        200
+      ],
+      "id": "c6f19c14-257c-4028-b700-2c2ca7e68d63",
+      "name": "Form: invalid link"
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "completionTitle": "Decision recorded",
+        "completionMessage": "={{ 'Finding ' + $('check decision').first().json.fid + ': ' + $('check decision').first().json.disposition + '. You can close this page.' }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.3,
+      "position": [
+        3080,
+        -300
+      ],
+      "id": "4f47eae0-5181-48c1-9e5c-5f6b3c324d74",
+      "name": "Form: recorded"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "findings",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $('check decision').first().json.update.id }}",
+            "status": "={{ $('check decision').first().json.update.status }}",
+            "disposition": "={{ $('check decision').first().json.update.disposition }}",
+            "final_severity": "={{ $('check decision').first().json.update.final_severity }}",
+            "reason": "={{ $('check decision').first().json.update.reason }}",
+            "reviewer": "={{ $('check decision').first().json.update.reviewer }}",
+            "decided_at": "={{ $('check decision').first().json.update.decided_at }}",
+            "time_to_decision_h": "={{ $('check decision').first().json.update.time_to_decision_h }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "first_seen_at",
+              "displayName": "first_seen_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "last_seen_at",
+              "displayName": "last_seen_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "first_pr",
+              "displayName": "first_pr",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "last_pr",
+              "displayName": "last_pr",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "seen_count",
+              "displayName": "seen_count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "origin",
+              "displayName": "origin",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "group_key",
+              "displayName": "group_key",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "tool",
+              "displayName": "tool",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "category",
+              "displayName": "category",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "rule",
+              "displayName": "rule",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "severity",
+              "displayName": "severity",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "severity_source",
+              "displayName": "severity_source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "file",
+              "displayName": "file",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "line",
+              "displayName": "line",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "module",
+              "displayName": "module",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "dvwa_level",
+              "displayName": "dvwa_level",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "in_scope",
+              "displayName": "in_scope",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "message",
+              "displayName": "message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "snippet",
+              "displayName": "snippet",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "ai_provider",
+              "displayName": "ai_provider",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "ai_status",
+              "displayName": "ai_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "ai_severity",
+              "displayName": "ai_severity",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "ai_source_fact",
+              "displayName": "ai_source_fact",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "ai_inference",
+              "displayName": "ai_inference",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "ai_proof_gaps",
+              "displayName": "ai_proof_gaps",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "ai_reason",
+              "displayName": "ai_reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "disposition",
+              "displayName": "disposition",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "final_severity",
+              "displayName": "final_severity",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "reason",
+              "displayName": "reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "reviewer",
+              "displayName": "reviewer",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "decided_at",
+              "displayName": "decided_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "time_to_decision_h",
+              "displayName": "time_to_decision_h",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "cellFormat": "RAW"
+        }
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2860,
+        -300
+      ],
+      "id": "d5d74230-f94f-4386-9632-fd9bf575e06d",
+      "name": "Update finding",
+      "credentials": {
+        "googleApi": {
+          "id": null,
+          "name": "Google Service Account account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "decisions_log",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "logged_at": "={{ $json.log.logged_at }}",
+            "finding_id": "={{ $json.log.finding_id }}",
+            "pr": "={{ $json.log.pr }}",
+            "previous_status": "={{ $json.log.previous_status }}",
+            "new_status": "={{ $json.log.new_status }}",
+            "disposition": "={{ $json.log.disposition }}",
+            "final_severity": "={{ $json.log.final_severity }}",
+            "reason": "={{ $json.log.reason }}",
+            "reviewer": "={{ $json.log.reviewer }}",
+            "source": "={{ $json.log.source }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "logged_at",
+              "displayName": "logged_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "finding_id",
+              "displayName": "finding_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "pr",
+              "displayName": "pr",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "previous_status",
+              "displayName": "previous_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "new_status",
+              "displayName": "new_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "disposition",
+              "displayName": "disposition",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "final_severity",
+              "displayName": "final_severity",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "reason",
+              "displayName": "reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "reviewer",
+              "displayName": "reviewer",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "cellFormat": "RAW"
+        }
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2640,
+        -300
+      ],
+      "id": "bad43165-4527-4cb7-81a8-48c016be8f14",
+      "name": "Append decisions_log",
+      "credentials": {
+        "googleApi": {
+          "id": null,
+          "name": "Google Service Account account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "67ba3ae4-3251-4c6e-b17e-143d3916fb67",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        2420,
+        -200
+      ],
+      "id": "1fcd4e03-ff2a-44a1-9985-02a8f661573a",
+      "name": "decision ok?"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Flow 2 · check decision (Run Once for All Items)\n// Runs after the decision page is submitted. Checks again that the link has not expired\n// and the finding is still open (it may have been decided in another tab), validates\n// the answers and builds the rows for decisions_log and findings.\n\nconst DISPOSITIONS = ['accepted', 'false_positive', 'suppressed', 'needs_evidence', 'escalated'];\nconst CLOSING = ['accepted', 'false_positive', 'suppressed']; // these take the finding out of the emails\nconst SEVERITIES = ['critical', 'high', 'medium', 'low', 'info'];\n\nconst link = $('check signature').first().json;\nconst answers = $('Form: decision').first().json;\nconst row = $input.first().json ?? {};\nconst now = new Date();\n\nconst clean = (v, n) => String(v ?? '')\n  .replace(/[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F]/g, '')\n  .trim()\n  .slice(0, n);\n\nconst disposition = clean(answers['Disposition'], 40);\nconst finalSeverity = clean(answers['Final severity'], 20);\nconst reason = clean(answers['Reason'], 1000);\nconst reviewer = clean(answers['Reviewer'], 120);\n\nlet problem = null;\nif (link.exp * 1000 <= now.getTime()) problem = 'expired';\nelse if (String(row.id ?? '') !== link.fid) problem = 'not found';\nelse if (String(row.status ?? '') === 'decided') problem = 'already decided';\nelse if (!DISPOSITIONS.includes(disposition)) problem = 'bad disposition';\nelse if (!SEVERITIES.includes(finalSeverity)) problem = 'bad severity';\nelse if (!reason) problem = 'missing reason';\nelse if (!reviewer) problem = 'missing reviewer';\n\nif (problem) return [{ json: { ok: false, problem, fid: link.fid } }];\n\nconst decidedAt = now.toISOString().replace(/\\.\\d{3}Z$/, 'Z');\nconst firstSeen = Date.parse(row.first_seen_at);\nconst hours = Number.isFinite(firstSeen) ? Math.round(((now.getTime() - firstSeen) / 36e5) * 100) / 100 : '';\nconst newStatus = CLOSING.includes(disposition) ? 'decided' : 'candidate';\n\nreturn [{ json: {\n  ok: true,\n  fid: link.fid,\n  disposition,\n  log: {\n    logged_at: decidedAt,\n    finding_id: link.fid,\n    pr: row.last_pr ?? '',\n    previous_status: row.status ?? '',\n    new_status: newStatus,\n    disposition,\n    final_severity: finalSeverity,\n    reason,\n    reviewer,\n    source: 'form',\n  },\n  update: {\n    id: link.fid,\n    status: newStatus,\n    disposition,\n    final_severity: finalSeverity,\n    reason,\n    reviewer,\n    decided_at: decidedAt,\n    time_to_decision_h: hours,\n  },\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        -200
+      ],
+      "id": "45aa828b-fb88-4701-84ce-9345c38ea738",
+      "name": "check decision"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "findings",
+          "mode": "name"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "id",
+              "lookupValue": "={{ $('check signature').first().json.fid }}"
+            }
+          ]
+        },
+        "options": {
+          "returnFirstMatch": true
+        }
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1980,
+        -200
+      ],
+      "id": "ebfba2fa-2f68-4d46-ace5-5a1750ad385b",
+      "name": "Get finding (recheck)",
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleApi": {
+          "id": null,
+          "name": "Google Service Account account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Disposition",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "accepted"
+                  },
+                  {
+                    "option": "false_positive"
+                  },
+                  {
+                    "option": "suppressed"
+                  },
+                  {
+                    "option": "needs_evidence"
+                  },
+                  {
+                    "option": "escalated"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Final severity",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "critical"
+                  },
+                  {
+                    "option": "high"
+                  },
+                  {
+                    "option": "medium"
+                  },
+                  {
+                    "option": "low"
+                  },
+                  {
+                    "option": "info"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Reason",
+              "fieldType": "textarea",
+              "placeholder": "What in the code supports this? Cite the lines you checked.",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Reviewer",
+              "placeholder": "Your name or email",
+              "requiredField": true
+            }
+          ]
+        },
+        "limitWaitTime": true,
+        "resumeAmount": 30,
+        "resumeUnit": "minutes",
+        "options": {
+          "formTitle": "Decide this finding",
+          "formDescription": "={{ $('check finding').first().json.summary_html }}",
+          "buttonLabel": "Record decision",
+          "customCss": ":root {\n\t--font-family: 'Open Sans', sans-serif;\n\t--font-weight-normal: 400;\n\t--font-weight-bold: 600;\n\t--font-size-body: 12px;\n\t--font-size-label: 14px;\n\t--font-size-test-notice: 12px;\n\t--font-size-input: 14px;\n\t--font-size-header: 20px;\n\t--font-size-paragraph: 14px;\n\t--font-size-link: 12px;\n\t--font-size-error: 12px;\n\t--font-size-html-h1: 28px;\n\t--font-size-html-h2: 20px;\n\t--font-size-html-h3: 16px;\n\t--font-size-html-h4: 14px;\n\t--font-size-html-h5: 12px;\n\t--font-size-html-h6: 10px;\n\t--font-size-subheader: 14px;\n\n\t/* Colors */\n\t--color-background: #fbfcfe;\n\t--color-test-notice-text: #e6a23d;\n\t--color-test-notice-bg: #fefaf6;\n\t--color-test-notice-border: #f6dcb7;\n\t--color-card-bg: #ffffff;\n\t--color-card-border: #dbdfe7;\n\t--color-card-shadow: rgba(99, 77, 255, 0.06);\n\t--color-link: #7e8186;\n\t--color-header: #525356;\n\t--color-label: #555555;\n\t--color-input-border: #dbdfe7;\n\t--color-input-text: #71747A;\n\t--color-focus-border: rgb(90, 76, 194);\n\t--color-submit-btn-bg: #ff6d5a;\n\t--color-submit-btn-text: #ffffff;\n\t--color-error: #ea1f30;\n\t--color-required: #ff6d5a;\n\t--color-clear-button-bg: #7e8186;\n\t--color-html-text: #555;\n\t--color-html-link: #ff6d5a;\n\t--color-header-subtext: #7e8186;\n\n\t/* Border Radii */\n\t--border-radius-card: 8px;\n\t--border-radius-input: 6px;\n\t--border-radius-clear-btn: 50%;\n\t--card-border-radius: 8px;\n\n\t/* Spacing */\n\t--padding-container-top: 24px;\n\t--padding-card: 24px;\n\t--padding-test-notice-vertical: 12px;\n\t--padding-test-notice-horizontal: 24px;\n\t--margin-bottom-card: 16px;\n\t--padding-form-input: 12px;\n\t--card-padding: 24px;\n\t--card-margin-bottom: 16px;\n\n\t/* Dimensions */\n\t--container-width: 448px;\n\t--submit-btn-height: 48px;\n\t--checkbox-size: 18px;\n\n\t/* Others */\n\t--box-shadow-card: 0px 4px 16px 0px var(--color-card-shadow);\n\t--opacity-placeholder: 0.5;\n}\n\n.form-header { text-align: left; }\n.form-header h1 { text-align: center; }\n.form-header table { border-collapse: collapse; width: 100%; font-size: 13px; margin: 8px 0; }\n.form-header th, .form-header td { text-align: left; vertical-align: top; padding: 4px 6px; border-bottom: 1px solid #e3e6eb; }\n.form-header th { white-space: nowrap; width: 1%; }\n.form-header pre { background: #f6f8fa; border: 1px solid #e3e6eb; border-radius: 6px; padding: 8px 10px; overflow-x: auto; font-size: 12px; line-height: 1.45; tab-size: 4; white-space: pre; color: #24292f; }\n.form-header ul { padding-left: 20px; margin: 4px 0; }\n.form-header a { color: #1a73e8; }\n.form-header td { overflow-wrap: anywhere; }"
+        }
+      },
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.3,
+      "position": [
+        1760,
+        -200
+      ],
+      "id": "93ee3e6d-e7d4-4732-bbae-96258d88c6ea",
+      "name": "Form: decision"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "76b28247-80e3-4eb2-9f4a-c1f3b32725f6",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        1540,
+        -100
+      ],
+      "id": "7e7a6264-67cd-4cba-87cc-cda3b5b594db",
+      "name": "finding ok?"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Flow 2 · check finding (Run Once for All Items)\n// The finding must exist and still be open. Builds the decision page with the context a\n// reviewer needs to judge the code, not the AI: scanner message, the lines around the\n// finding, and a link to the exact commit on GitHub. Every value comes from the sheet,\n// and part of it from the PR author, so all of it is escaped.\n// Secrets carry no snippet by design (the value is never stored): the link shows it.\n\nconst REPO = 'moypulido/dvwa-ai-triage';\nconst link = $('check signature').first().json;\nconst row = $('Get finding').first().json ?? {};\n\nconst esc = (v) => String(v ?? '').replace(/[&<>\"']/g, (c) => (\n  { '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' }[c]));\nconst short = (s, n) => { const t = String(s ?? ''); return t.length > n ? `${t.slice(0, n - 1)}…` : t; };\n\nlet problem = null;\nif (String(row.id ?? '') !== link.fid) problem = 'not found';\nelse if (String(row.status ?? '') === 'decided') problem = 'already decided';\n\nif (problem) return [{ json: { ok: false, problem, fid: link.fid } }];\n\nconst lineNo = Number(row.line) || 0;\nconst isSecret = row.tool === 'gitleaks' || row.category === 'secrets';\n\n// Code link: the newest run of the PR that last saw the finding (from \"Get run\").\nlet sha = '';\nlet newest = '';\nfor (const { json: r } of $('Get run').all()) {\n  const s = String(r.head_sha ?? '');\n  if (String(r.pr) === String(row.last_pr) && /^[0-9a-f]{40}$/.test(s) && String(r.received_at ?? '') >= newest) {\n    sha = s;\n    newest = String(r.received_at ?? '');\n  }\n}\nconst filePath = String(row.file ?? '').split('/').map(encodeURIComponent).join('/');\nconst codeUrl = sha && filePath\n  ? `https://github.com/${REPO}/blob/${sha}/${filePath}${lineNo ? `#L${lineNo}` : ''}`\n  : `https://github.com/${REPO}/pull/${encodeURIComponent(row.last_pr ?? '')}/files`;\n\n// Snippet: the scanner stores line-2 .. line+2, so numbering starts at max(1, line - 2).\nlet codeHtml = '';\nconst snippet = String(row.snippet ?? '');\nif (snippet && lineNo) {\n  const lines = snippet.replace(/\\n$/, '').split('\\n');\n  const start = Math.max(1, lineNo - 2);\n  const width = String(start + lines.length - 1).length;\n  codeHtml = '<pre><code>' + lines.map((l, i) => {\n    const n = start + i;\n    const text = `${n === lineNo ? '&gt;' : ' '} ${String(n).padStart(width)} | ${esc(l)}`;\n    return n === lineNo ? `<b>${text}</b>` : text;\n  }).join('\\n') + '</code></pre>';\n} else if (isSecret) {\n  codeHtml = '<p><i>Secret value is never stored or sent to the AI. Open the code link to see it.</i></p>';\n}\n\nconst rule = String(row.rule ?? '').split('.').pop();\nconst where = row.module ? `${row.module} / ${row.dvwa_level || '-'}` : '-';\nconst injection = String(row.ai_reason ?? '').startsWith('[injection suspected');\nconst hasAi = row.ai_provider && row.ai_provider !== 'none';\nconst gaps = String(row.ai_proof_gaps ?? '').split('|').map((g) => g.trim()).filter(Boolean);\n\nconst tr = (k, v) => `<tr><th>${k}</th><td>${v}</td></tr>`;\nconst summary = [\n  `<p><b>Finding</b> <code>${esc(row.id)}</code> · first seen in PR #${esc(row.first_pr)}, last in PR #${esc(row.last_pr)} (${esc(row.seen_count)} runs)</p>`,\n  '<table>',\n  tr('Location', `<code>${esc(row.file)}:${esc(row.line)}</code> · <a href=\"${esc(codeUrl)}\" target=\"_blank\" rel=\"noopener noreferrer\">open code at this commit</a>`),\n  tr('Tool', `${esc(row.tool)} <code>${esc(rule)}</code> · severity ${esc(row.severity)} (${esc(row.severity_source || 'tool')})`),\n  tr('Scanner says', esc(short(row.message, 400))),\n  tr('Module / level', `${esc(where)} · origin ${esc(row.origin)}`),\n  '</table>',\n  codeHtml,\n  injection ? '<p><b>Warning:</b> the AI step suspected a prompt injection in this finding. Judge the code, not its comments.</p>' : '',\n  hasAi\n    ? `<p><b>AI suggestion:</b> ${esc(row.ai_status || '-')} · ${esc(row.ai_severity || '-')} (${esc(row.ai_provider)})<br>${esc(short(row.ai_reason, 300))}</p>`\n    : `<p><b>AI suggestion:</b> none. ${esc(short(row.ai_reason, 200))}</p>`,\n  gaps.length ? `<p><b>What the AI could not prove</b></p><ul>${gaps.map((g) => `<li>${esc(short(g, 200))}</li>`).join('')}</ul>` : '',\n  '<p><b>Dispositions</b></p><ul>',\n  '<li><b>accepted</b>: a real issue, reachable as far as the code shows</li>',\n  '<li><b>false_positive</b>: the tool is wrong here (input validated, fake value, dead code)</li>',\n  '<li><b>suppressed</b>: technically right, but not worth fixing here (accepted risk, out of scope)</li>',\n  '<li><b>needs_evidence</b>: the code alone cannot tell; needs a test or more info</li>',\n  '<li><b>escalated</b>: someone else must decide</li>',\n  '</ul>',\n  '<p>The AI only suggests. Your decision is the one that counts: read the code first.</p>',\n].join('');\n\nreturn [{ json: {\n  ok: true,\n  fid: link.fid,\n  // n8n turns a literal \"\\n\" in the description into a line break; doubling the\n  // backslash keeps code such as \"\\n\" in PHP strings exactly as written.\n  summary_html: summary.replace(/\\\\n/g, '\\\\\\\\n'),\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        -100
+      ],
+      "id": "105e5c16-c919-4c72-862c-fc12b0739bbc",
+      "name": "check finding"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "findings",
+          "mode": "name"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "id",
+              "lookupValue": "={{ $json.fid }}"
+            }
+          ]
+        },
+        "options": {
+          "returnFirstMatch": true
+        }
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        880,
+        -100
+      ],
+      "id": "f7a9a97a-285b-4c3d-acf3-4666208461fb",
+      "name": "Get finding",
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleApi": {
+          "id": null,
+          "name": "Google Service Account account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "df962f8b-6fea-4344-a8ea-88179119c4e9",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        660,
+        0
+      ],
+      "id": "0b8ab41c-1f39-45f7-8823-d290e9e83099",
+      "name": "signature ok?"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Flow 2 · check signature (Run Once for All Items)\n// The link carries fid, exp and sig. \"verify signature\" recomputed the HMAC with the\n// decision-links credential; here we compare it and check the expiry.\n// Every failure gets the same generic page, so the reason stays internal.\n\nconst MAX_TTL_S = 3 * 24 * 3600 + 3600; // 3 days + 1 h of clock slack\n\nconst f = $input.first().json;\nconst fid = String(f.fid ?? '').trim();\nconst exp = String(f.exp ?? '').trim();\nconst sig = String(f.sig ?? '').trim().toLowerCase();\nconst expected = String(f.expected_sig ?? '');\nconst now = Math.floor(Date.now() / 1000);\n\n// Constant-time comparison: the time taken does not depend on how many characters match.\nfunction safeEqual(a, b) {\n  if (a.length !== b.length) return false;\n  let diff = 0;\n  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);\n  return diff === 0;\n}\n\nlet problem = null;\nif (!/^[0-9a-f]{12}$/.test(fid) || !/^\\d{10}$/.test(exp) || !/^[0-9a-f]{64}$/.test(sig)) problem = 'bad format';\nelse if (!safeEqual(sig, expected)) problem = 'bad signature';\nelse if (Number(exp) <= now) problem = 'expired';\nelse if (Number(exp) > now + MAX_TTL_S) problem = 'expiry too far';\n\nreturn [{ json: { ok: problem === null, problem, fid, exp: Number(exp) || 0 } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        0
+      ],
+      "id": "69536bc2-545a-4bdd-b4b4-657da9866961",
+      "name": "check signature"
+    },
+    {
+      "parameters": {
+        "action": "hmac",
+        "value": "={{ 'v1.' + $json.fid + '.' + $json.exp }}",
+        "dataPropertyName": "expected_sig"
+      },
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "id": "1c3acc84-72d3-4919-8814-151824aad82c",
+      "name": "verify signature",
+      "credentials": {
+        "crypto": {
+          "id": null,
+          "name": "decision-links"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "formTitle": "Security finding review",
+        "formDescription": "Continue to review the finding linked from the triage email. Nothing changes until you submit the next page.",
+        "formFields": {
+          "values": [
+            {
+              "fieldName": "fid",
+              "fieldType": "hiddenField"
+            },
+            {
+              "fieldName": "exp",
+              "fieldType": "hiddenField"
+            },
+            {
+              "fieldName": "sig",
+              "fieldType": "hiddenField"
+            }
+          ]
+        },
+        "options": {
+          "appendAttribution": false,
+          "buttonLabel": "Continue",
+          "path": "decide",
+          "ignoreBots": true
+        }
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.3,
+      "position": [
+        0,
+        0
+      ],
+      "id": "55bfc2e7-3037-450a-b1bb-52e74b4f4eab",
+      "name": "Form: open link"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "findings",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $('build reopen').all()[$itemIndex].json.update.id }}",
+            "status": "={{ $('build reopen').all()[$itemIndex].json.update.status }}",
+            "disposition": "={{ $('build reopen').all()[$itemIndex].json.update.disposition }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "first_seen_at",
+              "displayName": "first_seen_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "last_seen_at",
+              "displayName": "last_seen_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "first_pr",
+              "displayName": "first_pr",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "last_pr",
+              "displayName": "last_pr",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "seen_count",
+              "displayName": "seen_count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "origin",
+              "displayName": "origin",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "group_key",
+              "displayName": "group_key",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "tool",
+              "displayName": "tool",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "category",
+              "displayName": "category",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "rule",
+              "displayName": "rule",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "severity",
+              "displayName": "severity",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "severity_source",
+              "displayName": "severity_source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "file",
+              "displayName": "file",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "line",
+              "displayName": "line",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "module",
+              "displayName": "module",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "dvwa_level",
+              "displayName": "dvwa_level",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "in_scope",
+              "displayName": "in_scope",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "message",
+              "displayName": "message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "snippet",
+              "displayName": "snippet",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "ai_provider",
+              "displayName": "ai_provider",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "ai_status",
+              "displayName": "ai_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "ai_severity",
+              "displayName": "ai_severity",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "ai_source_fact",
+              "displayName": "ai_source_fact",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "ai_inference",
+              "displayName": "ai_inference",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "ai_proof_gaps",
+              "displayName": "ai_proof_gaps",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "ai_reason",
+              "displayName": "ai_reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "disposition",
+              "displayName": "disposition",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "final_severity",
+              "displayName": "final_severity",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "reason",
+              "displayName": "reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "reviewer",
+              "displayName": "reviewer",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "decided_at",
+              "displayName": "decided_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "time_to_decision_h",
+              "displayName": "time_to_decision_h",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "cellFormat": "RAW"
+        }
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1100,
+        800
+      ],
+      "id": "2c1eb6a0-8c6b-44f9-be6d-6666b2b35a6f",
+      "name": "Update finding (reopen)",
+      "credentials": {
+        "googleApi": {
+          "id": null,
+          "name": "Google Service Account account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "decisions_log",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "logged_at": "={{ $json.log.logged_at }}",
+            "finding_id": "={{ $json.log.finding_id }}",
+            "pr": "={{ $json.log.pr }}",
+            "previous_status": "={{ $json.log.previous_status }}",
+            "new_status": "={{ $json.log.new_status }}",
+            "disposition": "={{ $json.log.disposition }}",
+            "final_severity": "={{ $json.log.final_severity }}",
+            "reason": "={{ $json.log.reason }}",
+            "reviewer": "={{ $json.log.reviewer }}",
+            "source": "={{ $json.log.source }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "logged_at",
+              "displayName": "logged_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "finding_id",
+              "displayName": "finding_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "pr",
+              "displayName": "pr",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "previous_status",
+              "displayName": "previous_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "new_status",
+              "displayName": "new_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "disposition",
+              "displayName": "disposition",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "final_severity",
+              "displayName": "final_severity",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "reason",
+              "displayName": "reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "reviewer",
+              "displayName": "reviewer",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "cellFormat": "RAW"
+        }
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        880,
+        800
+      ],
+      "id": "f82413af-76a8-4b42-875d-b25e0e2fcd64",
+      "name": "Append decisions_log (reopen)",
+      "credentials": {
+        "googleApi": {
+          "id": null,
+          "name": "Google Service Account account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Flow 2 · build reopen (Run Once for All Items)\n// Only decided findings can be reopened. Builds one audit row and one update per finding;\n// the update only moves status back to candidate, and the next decision overwrites the rest.\n// Any id that is missing or not decided stops the run, so nothing is half-done.\n\nconst wanted = $('reopen input').all().map((i) => i.json);\nconst rows = new Map($input.all().map((i) => [String(i.json.id ?? ''), i.json]));\nconst now = new Date().toISOString().replace(/\\.\\d{3}Z$/, 'Z');\n\nconst problems = [];\nconst out = [];\nfor (const { fid, reopen_reason, reviewer } of wanted) {\n  const row = rows.get(fid);\n  if (!row) { problems.push(`${fid}: not found`); continue; }\n  if (String(row.status) !== 'decided') { problems.push(`${fid}: status is ${row.status || 'empty'}`); continue; }\n  out.push({ json: {\n    log: {\n      logged_at: now,\n      finding_id: fid,\n      pr: row.last_pr,\n      previous_status: 'decided',\n      new_status: 'candidate',\n      disposition: 'reopened',\n      final_severity: '',\n      reason: `${reopen_reason} (was ${row.disposition}/${row.final_severity})`,\n      reviewer,\n      source: 'manual',\n    },\n    update: { id: fid, status: 'candidate', disposition: 'reopened' },\n  } });\n}\nif (problems.length) throw new Error(`Nothing reopened. ${problems.join('; ')}`);\nreturn out;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        800
+      ],
+      "id": "a24a787c-5267-4330-80ea-609f96141177",
+      "name": "build reopen"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "findings",
+          "mode": "name"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "id",
+              "lookupValue": "={{ $json.fid }}"
+            }
+          ]
+        },
+        "options": {
+          "returnFirstMatch": true
+        }
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        440,
+        800
+      ],
+      "id": "b15c51d3-0e1f-4caf-9bbe-69251138365f",
+      "name": "Get finding (reopen)",
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleApi": {
+          "id": null,
+          "name": "Google Service Account account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Flow 2 · reopen input (manual helper, not part of the form path)\n// Reopens decided findings so they can be decided again from the same email links,\n// while those links are still valid. Each reopen is written to decisions_log first,\n// so the first decision and the reopen both stay in the audit trail.\n// Run this branch with \"Execute workflow\" from the \"Reopen findings\" trigger.\n\nconst FINDING_IDS = [\n  'PUT_FINDING_IDS_HERE',\n];\nconst REASON = 'PUT_THE_REASON_HERE';\nconst REVIEWER = 'PUT_YOUR_NAME_HERE';\n\nconst ids = [...new Set(FINDING_IDS.map((s) => String(s).trim()))];\nconst bad = ids.filter((id) => !/^[0-9a-f]{12}$/.test(id));\nif (bad.length) throw new Error(`Not finding ids: ${bad.join(', ')}`);\nif (REASON.startsWith('PUT_') || REASON.length < 20) throw new Error('Write a real reason (20+ chars).');\nif (REVIEWER.startsWith('PUT_')) throw new Error('Set REVIEWER.');\n\nreturn ids.map((fid) => ({ json: { fid, reopen_reason: REASON, reviewer: REVIEWER } }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        800
+      ],
+      "id": "6f04ba8f-9bd3-49d1-a980-294c8e07f1dc",
+      "name": "reopen input"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "runs",
+          "mode": "name"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "pr",
+              "lookupValue": "={{ $json.last_pr }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1100,
+        -100
+      ],
+      "id": "bec2284e-c44f-4096-a460-b0733a945ed4",
+      "name": "Get run",
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleApi": {
+          "id": null,
+          "name": "Google Service Account account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        800
+      ],
+      "id": "bd039b78-8ed2-4d2f-b4d0-9df4e8e37277",
+      "name": "Reopen findings"
+    }
+  ],
+  "connections": {
+    "sign test link": {
+      "main": [
+        [
+          {
+            "node": "test link url",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "test link input": {
+      "main": [
+        [
+          {
+            "node": "sign test link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mint test link": {
+      "main": [
+        [
+          {
+            "node": "test link input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update finding": {
+      "main": [
+        [
+          {
+            "node": "Form: recorded",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append decisions_log": {
+      "main": [
+        [
+          {
+            "node": "Update finding",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "decision ok?": {
+      "main": [
+        [
+          {
+            "node": "Append decisions_log",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Form: invalid link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "check decision": {
+      "main": [
+        [
+          {
+            "node": "decision ok?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get finding (recheck)": {
+      "main": [
+        [
+          {
+            "node": "check decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Form: decision": {
+      "main": [
+        [
+          {
+            "node": "Get finding (recheck)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "finding ok?": {
+      "main": [
+        [
+          {
+            "node": "Form: decision",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Form: invalid link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "check finding": {
+      "main": [
+        [
+          {
+            "node": "finding ok?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get finding": {
+      "main": [
+        [
+          {
+            "node": "Get run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "signature ok?": {
+      "main": [
+        [
+          {
+            "node": "Get finding",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Form: invalid link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "check signature": {
+      "main": [
+        [
+          {
+            "node": "signature ok?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "verify signature": {
+      "main": [
+        [
+          {
+            "node": "check signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Form: open link": {
+      "main": [
+        [
+          {
+            "node": "verify signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append decisions_log (reopen)": {
+      "main": [
+        [
+          {
+            "node": "Update finding (reopen)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "build reopen": {
+      "main": [
+        [
+          {
+            "node": "Append decisions_log (reopen)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get finding (reopen)": {
+      "main": [
+        [
+          {
+            "node": "build reopen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "reopen input": {
+      "main": [
+        [
+          {
+            "node": "Get finding (reopen)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get run": {
+      "main": [
+        [
+          {
+            "node": "check finding",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reopen findings": {
+      "main": [
+        [
+          {
+            "node": "reopen input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}

@@ -1,0 +1,397 @@
+{
+  "name": "flow-3-metrics",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "35eaff39-f91b-4e9b-904c-c1c66e500b2b",
+      "name": "Run metrics"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "runs",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        220,
+        0
+      ],
+      "id": "f7b889c3-35c4-4ad5-9c7b-172619350df1",
+      "name": "Get runs",
+      "credentials": {
+        "googleApi": {
+          "id": null,
+          "name": "Google Service Account account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "findings",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        440,
+        0
+      ],
+      "id": "e2239d4a-3390-4219-8070-e42c9db8b9c8",
+      "name": "Get findings",
+      "credentials": {
+        "googleApi": {
+          "id": null,
+          "name": "Google Service Account account"
+        }
+      },
+      "alwaysOutputData": true,
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "occurrences",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        660,
+        0
+      ],
+      "id": "a9266897-f9bb-4754-b483-7c96dbc20b0c",
+      "name": "Get occurrences",
+      "credentials": {
+        "googleApi": {
+          "id": null,
+          "name": "Google Service Account account"
+        }
+      },
+      "alwaysOutputData": true,
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "decisions_log",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        880,
+        0
+      ],
+      "id": "1e0fe317-10eb-4324-80a0-0638ab05272d",
+      "name": "Get decisions_log",
+      "credentials": {
+        "googleApi": {
+          "id": null,
+          "name": "Google Service Account account"
+        }
+      },
+      "alwaysOutputData": true,
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Flow 3 · compute metrics (Run Once for All Items)\n// Reads the four tabs and returns one item with aggregates only: no finding ids, file\n// paths, reasons or reviewer names leave this node, so the output is safe to publish.\n// Every rate is null when its denominator is 0, so an empty sheet never divides by zero.\n\nconst rowsOf = (node, key) => {\n  try { return $(node).all().map((i) => i.json).filter((r) => String(r[key] ?? '') !== ''); }\n  catch (e) { return []; }\n};\nconst num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };\nconst rate = (a, b) => (b ? Math.round((a / b) * 1000) / 1000 : null);\nconst round2 = (v) => Math.round(v * 100) / 100;\nconst countBy = (rows, fn) => {\n  const out = {};\n  for (const r of rows) { const k = String(fn(r) ?? '') || '(none)'; out[k] = (out[k] ?? 0) + 1; }\n  return Object.fromEntries(Object.entries(out).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])));\n};\n// Nearest-rank percentile on a sorted copy.\nconst pct = (values, p) => {\n  if (!values.length) return null;\n  const s = [...values].sort((a, b) => a - b);\n  return s[Math.min(s.length - 1, Math.max(0, Math.ceil((p / 100) * s.length) - 1))];\n};\n\nconst findings = rowsOf('Get findings', 'id');\nconst occurrences = rowsOf('Get occurrences', 'finding_id');\nconst log = rowsOf('Get decisions_log', 'finding_id');\nconst runRows = rowsOf('Get runs', 'run_id');\n\n// A re-run of the same workflow run posts the same run_id again: count it once.\nconst runsById = new Map();\nfor (const r of runRows) if (!runsById.has(String(r.run_id))) runsById.set(String(r.run_id), r);\nconst runs = [...runsById.values()];\nconst sum = (rows, col) => rows.reduce((t, r) => t + num(r[col]), 0);\n\n// Volume and deduplication.\nconst rawRecords = sum(runs, 'raw_records');\nconst sightings = sum(runs, 'unique_findings');\nconst volume = {\n  runs: runs.length,\n  prs: new Set(runs.map((r) => String(r.pr))).size,\n  runs_without_findings: runs.filter((r) => num(r.unique_findings) === 0).length,\n  emails_sent: runs.filter((r) => String(r.email_sent).toLowerCase() === 'true').length,\n  raw_records: rawRecords,\n  sightings,\n  unique_findings: findings.length,\n  review_locations: new Set(findings.map((f) => String(f.group_key || `${f.file}:${f.line}`))).size,\n};\nconst dedup = {\n  duplicates_within_runs: sum(runs, 'duplicates'),\n  repeat_sightings: sum(runs, 'known_findings'),\n  reviews_without_dedup: rawRecords,\n  reviews_with_dedup: findings.length,\n  reviews_saved: Math.max(0, rawRecords - findings.length),\n  saved_rate: rate(Math.max(0, rawRecords - findings.length), rawRecords),\n};\n\n// Human decisions (the findings row holds the latest one).\nconst decided = findings.filter((f) => String(f.status) === 'decided');\nconst open = findings.filter((f) => String(f.status) !== 'decided');\nconst disp = (f) => String(f.disposition ?? '');\nconst accepted = decided.filter((f) => disp(f) === 'accepted');\nconst falsePos = decided.filter((f) => disp(f) === 'false_positive');\nconst logCount = new Map();\nfor (const l of log) logCount.set(String(l.finding_id), (logCount.get(String(l.finding_id)) ?? 0) + 1);\nconst decisions = {\n  decided: decided.length,\n  open: open.length,\n  by_disposition: countBy(decided, disp),\n  open_by_disposition: countBy(open, disp),\n  actionable_rate: rate(accepted.length, decided.length),\n  false_positive_rate: rate(falsePos.length, decided.length),\n  false_positives_in_impossible_level: falsePos.filter((f) => String(f.dvwa_level) === 'impossible').length,\n  findings_in_impossible_level: findings.filter((f) => String(f.dvwa_level) === 'impossible').length,\n  log_entries: log.length,\n  log_by_source: countBy(log, (l) => l.source),\n  findings_decided_more_than_once: [...logCount.values()].filter((n) => n > 1).length,\n  // A rationale under 20 characters is a sign of rubber-stamping, not review.\n  short_rationales: decided.filter((f) => String(f.reason ?? '').trim().length < 20).length,\n  short_rationale_rate: rate(decided.filter((f) => String(f.reason ?? '').trim().length < 20).length, decided.length),\n};\n\nconst hours = decided.map((f) => Number(f.time_to_decision_h)).filter((h) => Number.isFinite(h) && h >= 0);\nconst timeToDecision = {\n  measured: hours.length,\n  median_h: hours.length ? round2(pct(hours, 50)) : null,\n  p90_h: hours.length ? round2(pct(hours, 90)) : null,\n  max_h: hours.length ? round2(Math.max(...hours)) : null,\n};\n\n// AI reliability. Secrets are never sent to the AI, so they are not part of the base.\nconst eligible = findings.filter((f) => String(f.category) !== 'secrets' && String(f.tool) !== 'gitleaks');\nconst provider = (f) => String(f.ai_provider || 'none');\nconst answered = eligible.filter((f) => provider(f) !== 'none');\nconst gaps = (f) => String(f.ai_proof_gaps ?? '').split('|').map((g) => g.trim()).filter(Boolean).length;\nconst ai = {\n  eligible: eligible.length,\n  not_sent_secrets: findings.length - eligible.length,\n  by_provider: countBy(eligible, provider),\n  by_status: countBy(answered, (f) => f.ai_status),\n  fallback_rate: rate(eligible.filter((f) => provider(f) === 'groq').length, eligible.length),\n  failure_rate: rate(eligible.length - answered.length, eligible.length),\n  failures_logged_in_runs: sum(runs, 'ai_failures'),\n  injection_suspected: answered.filter((f) => String(f.ai_reason ?? '').startsWith('[injection suspected')).length,\n  avg_proof_gaps: answered.length ? round2(answered.reduce((t, f) => t + gaps(f), 0) / answered.length) : null,\n};\n\n// AI vs human, only where both gave an answer. Agreement is not accuracy: it also rises\n// when the reviewer simply follows the suggestion (see short_rationale_rate).\nconst SEV = ['info', 'low', 'medium', 'high', 'critical'];\nconst both = decided.filter((f) => provider(f) !== 'none' && String(f.category) !== 'secrets');\nconst humanReal = (f) => ['accepted', 'suppressed'].includes(disp(f));\nconst verdictPairs = both.filter((f) => ['candidate', 'likely_false_positive'].includes(String(f.ai_status)));\nconst verdictAgree = verdictPairs.filter((f) => (String(f.ai_status) === 'candidate') === humanReal(f));\nconst sevPairs = both.filter((f) => SEV.includes(String(f.ai_severity)) && SEV.includes(String(f.final_severity)));\nconst sevDiff = sevPairs.map((f) => SEV.indexOf(String(f.final_severity)) - SEV.indexOf(String(f.ai_severity)));\nconst agreement = {\n  compared: both.length,\n  ai_abstained_needs_evidence: both.filter((f) => String(f.ai_status) === 'needs_evidence').length,\n  verdict_compared: verdictPairs.length,\n  verdict_agreement_rate: rate(verdictAgree.length, verdictPairs.length),\n  ai_real_human_real: verdictPairs.filter((f) => String(f.ai_status) === 'candidate' && humanReal(f)).length,\n  ai_real_human_false_positive: verdictPairs.filter((f) => String(f.ai_status) === 'candidate' && !humanReal(f)).length,\n  ai_false_positive_human_real: verdictPairs.filter((f) => String(f.ai_status) !== 'candidate' && humanReal(f)).length,\n  ai_false_positive_human_false_positive: verdictPairs.filter((f) => String(f.ai_status) !== 'candidate' && !humanReal(f)).length,\n  severity_compared: sevPairs.length,\n  severity_exact_rate: rate(sevDiff.filter((d) => d === 0).length, sevPairs.length),\n  severity_within_one_rate: rate(sevDiff.filter((d) => Math.abs(d) <= 1).length, sevPairs.length),\n  human_raised_severity: sevDiff.filter((d) => d > 0).length,\n  human_lowered_severity: sevDiff.filter((d) => d < 0).length,\n};\n\nconst proofGaps = {\n  open_findings_with_gaps: open.filter((f) => gaps(f) > 0).length,\n  open_gaps: open.reduce((t, f) => t + gaps(f), 0),\n};\n\nconst distributions = {\n  tool: countBy(findings, (f) => f.tool),\n  category: countBy(findings, (f) => f.category),\n  scanner_severity: countBy(findings, (f) => f.severity),\n  final_severity: countBy(decided, (f) => f.final_severity),\n  module: countBy(findings, (f) => f.module),\n  dvwa_level: countBy(findings, (f) => f.dvwa_level),\n  origin: countBy(findings, (f) => f.origin),\n};\n\nconst received = runs.map((r) => String(r.received_at ?? '')).filter(Boolean).sort();\nreturn [{ json: {\n  schema_version: '1.0',\n  generated_at: new Date().toISOString().replace(/\\.\\d{3}Z$/, 'Z'),\n  window: { first_run: received[0] ?? null, last_run: received[received.length - 1] ?? null },\n  volume,\n  dedup,\n  decisions,\n  time_to_decision: timeToDecision,\n  ai,\n  agreement,\n  proof_gaps: proofGaps,\n  distributions,\n  data_quality: {\n    duplicate_run_rows_ignored: runRows.length - runs.length,\n    occurrence_rows: occurrences.length,\n    occurrences_match_sightings: occurrences.length === sightings,\n  },\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        0
+      ],
+      "id": "f478eb84-f434-47a7-82ea-850f14e53491",
+      "name": "compute metrics"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "4fe68437-ea97-46ee-a0bf-7110fde5bbc2",
+              "leftValue": "={{ $json.data_quality.occurrences_match_sightings }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        1320,
+        0
+      ],
+      "id": "0e99bb8e-5ac9-44c1-9191-a7839579ac27",
+      "name": "data consistent?"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Flow 3 · build readout (Run Once for All Items)\n// Turns the metrics into the executive readout: scope · evidence · decision · value signal ·\n// next action · owner · time · proof gaps. Every sentence is derived from the numbers; the\n// readout points to the record (the Sheet), it does not replace it.\n// Distribution keys (module, tool) come from file paths a PR author controls, so every\n// value is HTML-escaped.\n\nconst OWNER = 'Repository owner (human reviewer)';\nconst REPO = 'moypulido/dvwa-ai-triage';\nconst SHEET_URL = 'https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/edit';\n\nconst m = $input.first().json;\nconst { volume: v, dedup: d, decisions: dec, time_to_decision: t, ai, agreement: ag, proof_gaps: pg,\n  distributions: dist } = m;\n\nconst esc = (s) => String(s ?? '').replace(/[&<>\"']/g, (c) => (\n  { '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' }[c]));\nconst pc = (r) => (r === null || r === undefined ? 'n/a' : `${Math.round(r * 1000) / 10}%`);\nconst dur = (h) => (h === null || h === undefined ? 'n/a' : h < 1 ? `${Math.round(h * 60)} min` : `${h} h`);\nconst plural = (n, one, many) => `${n} ${n === 1 ? one : many ?? `${one}s`}`;\nconst list = (o) => Object.entries(o ?? {}).map(([k, n]) => `${k} ${n}`).join(', ') || 'none';\nconst day = (iso) => String(iso ?? '').slice(0, 16).replace('T', ' ');\n\nconst accepted = dec.by_disposition?.accepted ?? 0;\nconst falsePos = dec.by_disposition?.false_positive ?? 0;\nconst urgent = (dist.final_severity?.critical ?? 0) + (dist.final_severity?.high ?? 0);\n\n// Next actions, most important first. Each one is triggered by a number, never by opinion.\nconst actions = [];\nif (dec.open > 0) actions.push(`Decide the ${plural(dec.open, 'open finding')} (${list(dec.open_by_disposition)}).`);\nif (ag.ai_false_positive_human_real > 0) {\n  actions.push(`Re-check ${plural(ag.ai_false_positive_human_real, 'finding')} the AI marked as likely false positive and the reviewer accepted.`);\n}\nif (dec.findings_in_impossible_level > 0 && dec.false_positives_in_impossible_level === 0) {\n  actions.push(`Re-check the ${plural(dec.findings_in_impossible_level, 'finding')} in impossible-level files: that level validates its input, and none was marked false positive.`);\n}\nif (dec.short_rationale_rate !== null && dec.short_rationale_rate >= 0.5) {\n  actions.push(`Raise review quality: ${dec.short_rationales} of ${dec.decided} decisions have a rationale under 20 characters. Cite the lines checked.`);\n}\nif (ai.failure_rate > 0) actions.push(`Look at AI failures: ${pc(ai.failure_rate)} of eligible findings got no suggestion.`);\nif (ai.injection_suspected > 0) actions.push(`Review ${plural(ai.injection_suspected, 'finding')} with a suspected prompt injection.`);\nif (accepted > 0) actions.push(`Track the ${plural(accepted, 'accepted finding')} to a fix or a documented exception (${urgent} critical or high).`);\nif (!actions.length) actions.push('No action needed.');\n\nconst sections = [\n  ['Scope', [\n    `Repository ${REPO}: ${plural(v.runs, 'scan run')} across ${plural(v.prs, 'pull request')}, ${day(m.window.first_run)} to ${day(m.window.last_run)} UTC.`,\n    `${plural(v.runs_without_findings, 'run')} had nothing in scope. Modules seen: ${list(dist.module)}.`,\n    'Static analysis only (semgrep, gitleaks, trivy). The app is never deployed or run.',\n  ]],\n  ['Evidence', [\n    `${plural(v.raw_records, 'scanner record')} → ${plural(v.unique_findings, 'unique finding')} at ${plural(v.review_locations, 'code location')}.`,\n    `By tool: ${list(dist.tool)}. By scanner severity: ${list(dist.scanner_severity)}. Origin: ${list(dist.origin)}.`,\n    `AI suggestions: ${ai.eligible} eligible (${list(ai.by_provider)}); ${ai.not_sent_secrets} secrets never sent. Fallback used on ${pc(ai.fallback_rate)}, failures ${pc(ai.failure_rate)}, suspected injections ${ai.injection_suspected}.`,\n    'Every item is a candidate, not a confirmed vulnerability.',\n  ]],\n  ['Decision', [\n    `${dec.decided} decided, ${dec.open} open. Dispositions: ${list(dec.by_disposition)}.`,\n    `Actionable rate ${pc(dec.actionable_rate)} (accepted ÷ decided). False positives ${falsePos} (${pc(dec.false_positive_rate)}), ${dec.false_positives_in_impossible_level} of them in impossible-level files.`,\n    `AI vs human on ${ag.verdict_compared} findings: same verdict ${pc(ag.verdict_agreement_rate)}, same severity ${pc(ag.severity_exact_rate)} (human raised ${ag.human_raised_severity}, lowered ${ag.human_lowered_severity}).`,\n    'A human made every decision; the AI only suggests. Agreement is not accuracy: it also rises when the reviewer follows the suggestion.',\n  ]],\n  ['Value signal', [\n    `Deduplication: ${d.reviews_saved} of ${d.reviews_without_dedup} reviews avoided (${pc(d.saved_rate)}). ${d.repeat_sightings} repeat sightings and ${d.duplicates_within_runs} in-run duplicates needed no new decision.`,\n    `${plural(v.emails_sent, 'email')} for ${plural(v.runs, 'run')}: runs with nothing new to decide stay silent.`,\n  ]],\n  ['Next action', actions],\n  ['Owner', [OWNER]],\n  ['Time', [\n    `Time to decision: median ${dur(t.median_h)}, p90 ${dur(t.p90_h)}, max ${dur(t.max_h)} (${t.measured} decisions).`,\n    `Readout generated ${day(m.generated_at)} UTC.`,\n  ]],\n  ['Proof gaps', [\n    `Open: ${plural(pg.open_gaps, 'proof gap')} on ${plural(pg.open_findings_with_gaps, 'undecided finding')}. The AI listed ${ai.avg_proof_gaps ?? 'n/a'} gaps per finding on average.`,\n    'No runtime validation: nothing here is confirmed exploitable.',\n    'These scanners do not detect logic flaws such as broken access control; a clean scan is not proof of safety.',\n  ]],\n];\n\nconst subject = `[dvwa-ai-triage] Readout: ${plural(v.unique_findings, 'finding')}, ${accepted} accepted, ${dec.open} open (${plural(v.runs, 'run')})`;\n\nconst text = [\n  ...sections.map(([title, lines]) => [title.toUpperCase(), ...lines.map((l) => `- ${l}`)].join('\\n')),\n  `Records: ${SHEET_URL}`,\n].join('\\n\\n');\n\nconst th = 'style=\"text-align:left;vertical-align:top;padding:8px 12px 8px 0;border-bottom:1px solid #ddd;white-space:nowrap\"';\nconst td = 'style=\"padding:8px 0;border-bottom:1px solid #ddd\"';\nconst html = `<div style=\"font-family:Arial,sans-serif;font-size:14px;color:#222;max-width:720px\">\n<p><b>Executive readout</b> · ${esc(REPO)}</p>\n<table style=\"border-collapse:collapse;width:100%\">${sections.map(([title, lines]) =>\n  `<tr><th ${th}>${esc(title)}</th><td ${td}>${lines.map((l) => esc(l)).join('<br>')}</td></tr>`).join('')}</table>\n<p><a href=\"${esc(SHEET_URL)}\">Records</a> (the readout points to the record; it does not replace it)</p>\n</div>`;\n\nreturn [{ json: { _subject: subject, _text: text, _html: html, metrics: m } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        -100
+      ],
+      "id": "4ca64ff1-f8dc-4d76-8a4a-b889d007bbd5",
+      "name": "build readout"
+    },
+    {
+      "parameters": {
+        "fromEmail": "dvwa-ai-triage <sender@example.com>",
+        "toEmail": "reviewer@example.com",
+        "subject": "={{ $json._subject }}",
+        "emailFormat": "both",
+        "text": "={{ $json._text }}",
+        "html": "={{ $json._html }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1760,
+        -100
+      ],
+      "id": "d47eda72-955c-4373-aa0a-0d0637b09b18",
+      "name": "Send readout",
+      "credentials": {
+        "smtp": {
+          "id": null,
+          "name": "SMTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "accessToken",
+        "resource": "file",
+        "operation": "edit",
+        "owner": {
+          "__rl": true,
+          "value": "moypulido",
+          "mode": "name"
+        },
+        "repository": {
+          "__rl": true,
+          "value": "dvwa-ai-triage",
+          "mode": "name"
+        },
+        "filePath": "metrics.json",
+        "binaryData": false,
+        "fileContent": "={{ JSON.stringify($('compute metrics').first().json, null, 2) + '\\n' }}",
+        "commitMessage": "={{ 'chore: update metrics.json (' + $('compute metrics').first().json.generated_at + ')' }}",
+        "additionalParameters": {
+          "branch": {
+            "branch": "gh-pages"
+          }
+        }
+      },
+      "type": "n8n-nodes-base.github",
+      "typeVersion": 1.1,
+      "position": [
+        1980,
+        -100
+      ],
+      "id": "02b7669a-7c0c-49f4-bdf9-7c5cb6681f07",
+      "name": "Publish metrics.json",
+      "credentials": {
+        "githubApi": {
+          "id": null,
+          "name": "github-pages-metrics"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "errorMessage": "Sheet was read while flow 1 was writing (occurrences do not match runs). Run again in a minute."
+      },
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        1540,
+        120
+      ],
+      "id": "eb9f6a6e-cbd8-45fe-9607-89425f774de1",
+      "name": "Stop: sheet mid-write"
+    }
+  ],
+  "connections": {
+    "Run metrics": {
+      "main": [
+        [
+          {
+            "node": "Get runs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get runs": {
+      "main": [
+        [
+          {
+            "node": "Get findings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get findings": {
+      "main": [
+        [
+          {
+            "node": "Get occurrences",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get occurrences": {
+      "main": [
+        [
+          {
+            "node": "Get decisions_log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get decisions_log": {
+      "main": [
+        [
+          {
+            "node": "compute metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "compute metrics": {
+      "main": [
+        [
+          {
+            "node": "data consistent?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "data consistent?": {
+      "main": [
+        [
+          {
+            "node": "build readout",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stop: sheet mid-write",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "build readout": {
+      "main": [
+        [
+          {
+            "node": "Send readout",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send readout": {
+      "main": [
+        [
+          {
+            "node": "Publish metrics.json",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}
